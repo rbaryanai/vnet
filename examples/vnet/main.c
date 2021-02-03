@@ -1,7 +1,4 @@
 #include <stdio.h>
-#include "doca_gw.h"
-#include "doca_utils.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -29,6 +26,8 @@
 #include <rte_flow.h>
 #include <rte_cycles.h>
 
+#include "doca_tencent.h"
+
 static volatile bool force_quit;
 
 static uint16_t port_id;
@@ -39,6 +38,9 @@ struct rte_mempool *mbuf_pool;
 #define DEST_IP ((192<<24) + (168<<16) + (1<<8) + 1) /* dest ip = 192.168.1.1 */
 #define FULL_MASK 0xffffffff /* full mask */
 #define EMPTY_MASK 0x0 /* empty mask */
+
+
+
 
 static inline void
 print_ether_addr(const char *what, struct rte_ether_addr *eth_addr)
@@ -57,7 +59,6 @@ main_loop(void)
 	uint16_t nb_rx;
 	uint16_t i;
 	uint16_t j;
-	int ret = 0;
 	struct rte_mbuf *m = NULL;
 
 	while (!force_quit) {

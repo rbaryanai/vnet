@@ -76,7 +76,7 @@ static int gw_build_default_fwd_to_sw(struct doca_fwd_tbl *tbl)
 void build_data_plain(void)
 {
     struct doca_gw_port_cfg cfg_port1 = { DOCA_GW_PORT_DPDK_BY_ID, "0" };
-    struct doca_gw_port_cfg cfg_port2 = { DOCA_GW_PORT_DPDK, "03:01" };
+    struct doca_gw_port_cfg cfg_port2 = { DOCA_GW_PORT_DPDK_BY_ID, "1" };
     struct doca_gw_error err = {0};
 
     printf("init GW application .\n");
@@ -97,6 +97,12 @@ void build_data_plain(void)
     if (gw_build_default_fwd_to_sw(&sw_fwd_tbl)){
         printf("failed to add SW fwd table\n");
     }
+}
+
+
+int doca_tencet_init(void){
+    build_data_plain();
+    return 0;
 }
 
 
