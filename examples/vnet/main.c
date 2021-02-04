@@ -26,7 +26,7 @@
 #include <rte_flow.h>
 #include <rte_cycles.h>
 
-#include "doca_tencent.h"
+#include "gw.h"
 
 #define DEBUG_BUFF_SIZE (4096)
 static volatile bool force_quit;

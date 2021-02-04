@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include "doca_tencent.h"
+#include "gw.h"
 #include "doca_gw.h"
 #include "doca_utils.h"
 #include <stdio.h>
@@ -202,13 +202,11 @@ int gw_parse_pkt_format(uint8_t *data, int len, bool l2, struct gw_pkt_format *f
 
 static int gw_parse_is_tun(struct gw_pkt_info *pinfo)
 {
-    struct rte_ipv4_hdr *ipv4hdr;
     //TODO: support ipv6
     if (pinfo->outer.l3_type != GW_IPV4) {
         return 0;
     }
 
-    ipv4hdr = (struct rte_ipv4_hdr *) pinfo->outer.l3;
     if (pinfo->outer.l3_type == IPPROTO_GRE) {
         // need to parse jre
         struct rte_gre_hdr *gre_hdr = (struct rte_gre_hdr *) pinfo->outer.l4;
