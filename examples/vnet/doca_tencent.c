@@ -1,6 +1,28 @@
 #include <stdio.h>
+#include "doca_tencent.h"
 #include "doca_gw.h"
 #include "doca_utils.h"
+#include <stdio.h>
+#include <arpa/inet.h>
+#include "rte_ether.h"
+#include "rte_mbuf.h"
+#include "rte_ip.h"
+#include "rte_tcp.h"
+#include "rte_udp.h"
+#include "rte_gre.h"
+#include "rte_vxlan.h"
+
+#define GW_IPV4 (4)
+#define GW_IPV6 (6)
+
+#define GW_VARIFY_LEN(pkt_len, off) if (off > pkt_len) { \
+                                            return -1; \
+                                            }
+#define GW_MAC_STR_FMT "%x:%x:%x:%x:%x:%x"
+#define GW_MAC_EXPAND(b) b[0],b[1],b[2],b[3],b[4],b[5]
+#define GW_IPV4_STR_FMT "%d:%d:%d:%d"
+#define GW_IPV4_EXPAND(b) b[0],b[1],b[2],b[3]
+
 
 struct doca_gw_port port1 = {0};
 struct doca_gw_port port2 = {0};
@@ -100,9 +122,229 @@ void build_data_plain(void)
 }
 
 
-int doca_tencet_init(void){
+int gw_init(void){
     build_data_plain();
     return 0;
 }
 
 
+static 
+int gw_parse_pkt_format(uint8_t *data, int len, bool l2, struct gw_pkt_format *fmt)
+{
+    // parse outer
+    struct rte_ether_hdr *eth = NULL;
+    struct rte_ipv4_hdr * iphdr;
+    int l3_off = 0;
+    int l4_off = 0;
+    int l7_off = 0;
+    
+    if (l2) {
+        eth = (struct rte_ether_hdr *) data;
+        fmt->l2 = data;
+
+        //TODO: add ipv6
+        switch(rte_be_to_cpu_16(eth->ether_type)){
+            case RTE_ETHER_TYPE_IPV4:
+                l3_off = sizeof(struct rte_ether_hdr);        
+            break;
+            case RTE_ETHER_TYPE_IPV6:
+                l3_off = sizeof(struct rte_ether_hdr);        
+                fmt->l3_type = 6; //const
+                return -1;
+            default:
+                fprintf(stderr, "unsupported type %x\n",eth->ether_type);
+                return -1;
+        }
+    }
+
+    iphdr = (struct rte_ipv4_hdr *) (data + l3_off);
+    if(iphdr->src_addr == 0 || iphdr->dst_addr == 0) {
+        return -1;
+    }
+    fmt->l3 = (data + l3_off);
+    fmt->l3_type = 4; //const
+
+
+
+    l4_off = l3_off + 20; // should be taken from iphdr
+    fmt->l4 = data + l4_off;
+    
+    switch(iphdr->next_proto_id){
+        case IPPROTO_TCP:
+            {
+                struct rte_tcp_hdr * tcphdr  = (struct rte_tcp_hdr *) (data + l4_off);
+                l7_off = l4_off +  (( tcphdr->data_off & 0xf0) >> 2);
+                GW_VARIFY_LEN(len, l7_off);
+
+                fmt->l4_type = IPPROTO_TCP;
+                fmt->l7 = (data + l7_off);
+            }
+            break;
+        case IPPROTO_UDP:
+            {
+                struct rte_udp_hdr * udphdr = (struct rte_udp_hdr *)(data + l4_off);
+                l7_off = l4_off + sizeof(*udphdr);
+
+                fmt->l4_type = IPPROTO_UDP;
+                GW_VARIFY_LEN(len, l7_off);
+            }
+            break;
+        case IPPROTO_GRE:
+            fmt->l4_type = IPPROTO_GRE;
+            break;
+        default:
+            printf("unsupported l4 %d\n",iphdr->next_proto_id);
+            return -1;
+    }
+
+    return 0;
+}
+
+static int gw_parse_is_tun(struct gw_pkt_info *pinfo)
+{
+    struct rte_ipv4_hdr *ipv4hdr;
+    //TODO: support ipv6
+    if (pinfo->outer.l3_type != GW_IPV4) {
+        return 0;
+    }
+
+    ipv4hdr = (struct rte_ipv4_hdr *) pinfo->outer.l3;
+    if (pinfo->outer.l3_type == IPPROTO_GRE) {
+        // need to parse jre
+        struct rte_gre_hdr *gre_hdr = (struct rte_gre_hdr *) pinfo->outer.l4;
+        // need to now how to parse
+        if (gre_hdr->k) {
+                return -1;
+        }
+        pinfo->tun_type = GW_TUN_GRE;
+        return sizeof(struct rte_gre_hdr);
+   }
+
+   if ( pinfo->outer.l4_type == IPPROTO_UDP ) {
+        struct rte_udp_hdr *udphdr = (struct rte_udp_hdr *) pinfo->outer.l4;
+        switch ( rte_cpu_to_be_16(udphdr->dst_port)){
+            case GW_VXLAN_PORT:
+                {
+                    // this is vxlan
+                    struct rte_vxlan_gpe_hdr *vxlanhdr = (struct rte_vxlan_gpe_hdr *) (pinfo->outer.l4 + sizeof(struct rte_udp_hdr));
+                    if (vxlanhdr->vx_flags & 0x08) {
+                        //TODO: need to check if this gpe
+                        pinfo->tun_type = GW_TUN_VXLAN;
+                        pinfo->tun.vni  = vxlanhdr->vx_vni;
+                        pinfo->tun.l2   = true;
+                    }
+                    return sizeof(struct rte_vxlan_gpe_hdr) + sizeof(struct rte_udp_hdr);
+                }
+            break;
+            default:
+                return 0;
+        }
+    }
+   
+   return 0; 
+}
+
+
+/**
+ * @brief - parse packet and extract outer/inner + tunnels and
+ *  put in packet info
+ *
+ * @param data    - packet raw data (including eth)
+ * @param len     - len of the packet
+ * @param pinfo   - extracted info is set here
+ *
+ * @return 0 on success and error otherwise.
+ */
+int gw_parse_packet(uint8_t *data, int len, struct gw_pkt_info *pinfo)
+{
+    int off = 0;
+    int inner_off = 0;
+    pinfo->len = len;
+    // parse outer
+
+    if (!pinfo) {
+        fprintf(stderr,"pinfo =%p\n", pinfo);
+        return -1;
+    }
+
+
+    if (gw_parse_pkt_format(data, len, true, &pinfo->outer)) {
+        return -1;
+    }
+
+    off = gw_parse_is_tun(pinfo);
+    // no tunnel parsing is done
+    if (pinfo->tun_type == GW_TUN_NONE) {
+        return 0;
+    }
+
+
+    switch(pinfo->tun_type){
+        case GW_TUN_GRE:
+            inner_off = (pinfo->outer.l4 - data) + off;
+            if (!gw_parse_pkt_format(data + inner_off , len - inner_off, false, &pinfo->inner)) 
+                return -1;
+            break;
+        case GW_TUN_VXLAN:
+            inner_off = (pinfo->outer.l4 - data) + off;
+            if (!gw_parse_pkt_format(data + inner_off , len - inner_off, pinfo->tun.l2, &pinfo->inner)) 
+                return -1;
+            break;
+
+        default:
+            break;
+    }
+
+    return 0;
+}
+
+static int gw_print_eth(uint8_t *data,char *str, int len)
+{
+    int off = 0;
+    struct rte_ether_hdr *eth = (struct rte_ether_hdr *) data;
+
+    off += snprintf(str+off, len-off, "ETH DST:"GW_MAC_STR_FMT,GW_MAC_EXPAND(((uint8_t *)&eth->d_addr)));
+    off += snprintf(str+off, len-off, ", SRC:"GW_MAC_STR_FMT"\n",GW_MAC_EXPAND(((uint8_t *)&eth->s_addr)));
+    return off;
+}
+
+
+static int gw_print_ipv4(uint8_t *data,char *str, int len)
+{
+    int off = 0;
+    struct rte_ipv4_hdr *iphdr = (struct rte_ipv4_hdr *) data;
+    off += snprintf(str+off, len-off, "IP SRC:"GW_IPV4_STR_FMT,GW_IPV4_EXPAND(((uint8_t *)&iphdr->dst_addr)));
+    off += snprintf(str+off, len-off, ", IP DST:"GW_IPV4_STR_FMT"\n",GW_IPV4_EXPAND(((uint8_t *)&iphdr->src_addr)));
+    return off;
+}
+
+int gw_parse_pkt_str(struct gw_pkt_info *pinfo, char *str, int len)
+{
+    int off = 0;
+    if(!pinfo)
+        return -1;
+
+    off+=gw_print_eth(pinfo->outer.l2, str, len);
+    if ( pinfo->outer.l3_type != 4){
+        return off;
+    }
+
+    off+=gw_print_ipv4(pinfo->outer.l3, str + off, len - off);
+
+    switch(pinfo->tun_type){
+        case GW_TUN_VXLAN:
+            off+=snprintf(str+off,len-off,"TUNNEL:VXLAN\n");
+            break;
+        default:
+            break;
+
+    }
+    if ( pinfo->inner.l3_type != 4){
+        return off;
+    }
+
+    off+=gw_print_ipv4(pinfo->inner.l3, str + off, len - off);
+
+
+    return off;
+}

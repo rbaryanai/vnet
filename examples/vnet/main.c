@@ -28,6 +28,7 @@
 
 #include "doca_tencent.h"
 
+#define DEBUG_BUFF_SIZE (4096)
 static volatile bool force_quit;
 
 static uint16_t port_id;
@@ -50,6 +51,7 @@ print_ether_addr(const char *what, struct rte_ether_addr *eth_addr)
 	printf("%s%s", what, buf);
 }
 
+static char strbuff[DEBUG_BUFF_SIZE];
 
 static void
 main_loop(void)
@@ -60,16 +62,24 @@ main_loop(void)
 	uint16_t i;
 	uint16_t j;
 	struct rte_mbuf *m = NULL;
+        uint8_t *d;
+        struct gw_pkt_info pinfo;
 
 	while (!force_quit) {
             for (port_id = 0; port_id < 2; port_id++) { 
                     for (i = 0; i < nr_queues; i++) {
                             nb_rx = rte_eth_rx_burst(port_id, i, mbufs, 32);
                             if (nb_rx) {
-                                printf("total buffers = %d\n",nb_rx);
                                 for (j = 0; j < nb_rx; j++) {
                                     m = mbufs[j];
-                                    printf("got mbuf on port == %d\n", m->port);
+                                    d = rte_pktmbuf_mtod(m,uint8_t *);
+                                    memset(&pinfo,0, sizeof(struct gw_pkt_info)); 
+                                    if(gw_parse_packet(d,  rte_pktmbuf_pkt_len(m), &pinfo)){
+                                        if (pinfo.outer.l3_type == 4) {
+                                            gw_parse_pkt_str(&pinfo, strbuff,DEBUG_BUFF_SIZE);
+                                            printf("got mbuf on port == %d,\n %s", m->port,strbuff);
+                                        }
+                                    }
                                     rte_eth_tx_burst((m->port == 0) ? 1 : 0, 0, &m, 1);
                                 }
                             }
