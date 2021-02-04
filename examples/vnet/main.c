@@ -26,7 +26,9 @@
 #include <rte_flow.h>
 #include <rte_cycles.h>
 
+#include "doca_gw.h"
 #include "gw.h"
+
 
 #define DEBUG_BUFF_SIZE (4096)
 static volatile bool force_quit;
@@ -34,11 +36,6 @@ static volatile bool force_quit;
 static uint16_t port_id;
 static uint16_t nr_queues = 2;
 struct rte_mempool *mbuf_pool;
-
-#define SRC_IP ((0<<24) + (0<<16) + (0<<8) + 0) /* src ip = 0.0.0.0 */
-#define DEST_IP ((192<<24) + (168<<16) + (1<<8) + 1) /* dest ip = 192.168.1.1 */
-#define FULL_MASK 0xffffffff /* full mask */
-#define EMPTY_MASK 0x0 /* empty mask */
 
 
 
@@ -67,23 +64,23 @@ main_loop(void)
 
 	while (!force_quit) {
             for (port_id = 0; port_id < 2; port_id++) { 
-                    for (i = 0; i < nr_queues; i++) {
-                            nb_rx = rte_eth_rx_burst(port_id, i, mbufs, 32);
-                            if (nb_rx) {
-                                for (j = 0; j < nb_rx; j++) {
-                                    m = mbufs[j];
-                                    d = rte_pktmbuf_mtod(m,uint8_t *);
-                                    memset(&pinfo,0, sizeof(struct gw_pkt_info)); 
-                                    if(gw_parse_packet(d,  rte_pktmbuf_pkt_len(m), &pinfo)){
-                                        if (pinfo.outer.l3_type == 4) {
-                                            gw_parse_pkt_str(&pinfo, strbuff,DEBUG_BUFF_SIZE);
-                                            printf("got mbuf on port == %d,\n %s", m->port,strbuff);
-                                        }
-                                    }
-                                    rte_eth_tx_burst((m->port == 0) ? 1 : 0, 0, &m, 1);
-                                }
+                for (i = 0; i < nr_queues; i++) {
+                    nb_rx = rte_eth_rx_burst(port_id, i, mbufs, 32);
+                    if (nb_rx) {
+                    for (j = 0; j < nb_rx; j++) {
+                        m = mbufs[j];
+                        d = rte_pktmbuf_mtod(m,uint8_t *);
+                        memset(&pinfo,0, sizeof(struct gw_pkt_info)); 
+                        if(gw_parse_packet(d,  rte_pktmbuf_pkt_len(m), &pinfo)){
+                            if (pinfo.outer.l3_type == 4) {
+                                gw_parse_pkt_str(&pinfo, strbuff,DEBUG_BUFF_SIZE);
+                                printf("got mbuf on port == %d,\n %s", m->port,strbuff);
                             }
+                        }
+                        rte_eth_tx_burst((m->port == 0) ? 1 : 0, 0, &m, 1);
                     }
+                    }
+                }
             }
 	}
 
@@ -213,6 +210,28 @@ signal_handler(int signum)
 	}
 }
 
+struct doca_gw_port port0 = {0};
+struct doca_gw_port port1 = {0};
+
+static int init_doca(void)
+{
+    int ret = 0;
+    struct doca_gw_port_cfg cfg_port0 = { DOCA_GW_PORT_DPDK_BY_ID, "0" };
+    struct doca_gw_port_cfg cfg_port1 = { DOCA_GW_PORT_DPDK_BY_ID, "1" };
+    struct doca_gw_error err = {0};
+    struct doca_gw_cfg cfg = {1000};
+    if (doca_gw_init(&cfg,&err)) { 
+        fprintf(stderr,"failed to init doca\n");
+        return -1;
+    }
+
+    // adding ports
+    ret+=doca_gw_port_start(&cfg_port0, &port0, &err);
+    ret+=doca_gw_port_start(&cfg_port1, &port1, &err);
+
+    return ret;
+}
+
 static void
 init_dpdk(int argc, char **argv)
 {
@@ -252,7 +271,11 @@ main(int argc, char **argv)
 	port_id = 1;
 	init_port();
 
-        printf("init ports!\n");
+        printf("starting doca\n");
+        if (init_doca()){
+            rte_exit(EXIT_FAILURE,"failed to init doca");
+        }
+        printf("success!\n");
 
 	main_loop();
 

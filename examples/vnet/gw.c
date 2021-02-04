@@ -12,8 +12,6 @@
 #include "rte_gre.h"
 #include "rte_vxlan.h"
 
-#define GW_IPV4 (4)
-#define GW_IPV6 (6)
 
 #define GW_VARIFY_LEN(pkt_len, off) if (off > pkt_len) { \
                                             return -1; \
@@ -24,19 +22,10 @@
 #define GW_IPV4_EXPAND(b) b[0],b[1],b[2],b[3]
 
 
-struct doca_gw_port port1 = {0};
-struct doca_gw_port port2 = {0};
 static struct doca_gw_pipeline pipeline1 = {0};
 static struct doca_fwd_tbl sw_fwd_tbl = {0};
 
-static void init_doca(void)
-{
-    struct doca_gw_error err = {0};
-    struct doca_gw_cfg cfg = {1000};
-    if (!doca_gw_init(&cfg,&err)) { 
-        printf("success\n");
-    }
-}
+
 
 static int gw_build_underlay_overlay(struct doca_gw_pipeline *pipeline, struct doca_gw_port *port)
 {
@@ -95,36 +84,17 @@ static int gw_build_default_fwd_to_sw(struct doca_fwd_tbl *tbl)
     return doca_gw_add_fwd(&cfg, tbl);
 }
 
-void build_data_plain(void)
+void gw_init_pipeline(struct doca_gw_port *p1, struct doca_gw_port *p2)
 {
-    struct doca_gw_port_cfg cfg_port1 = { DOCA_GW_PORT_DPDK_BY_ID, "0" };
-    struct doca_gw_port_cfg cfg_port2 = { DOCA_GW_PORT_DPDK_BY_ID, "1" };
-    struct doca_gw_error err = {0};
-
-    printf("init GW application .\n");
-
-    // init any resources needed for DOCA, this might include
-    // specific cfg, or implementaiton type (we start with always DPDK)
-    init_doca();
-
-    // adding ports
-    doca_gw_port_start(&cfg_port1, &port1, &err);
-    doca_gw_port_start(&cfg_port2, &port2, &err);
-
-    // create pipeline
-    if (gw_build_underlay_overlay(&pipeline1, &port1)){
+        // create pipeline
+    if (gw_build_underlay_overlay(&pipeline1, p1)){
         printf("failed to allocate pipeline\n");
     }
 
     if (gw_build_default_fwd_to_sw(&sw_fwd_tbl)){
         printf("failed to add SW fwd table\n");
     }
-}
-
-
-int gw_init(void){
-    build_data_plain();
-    return 0;
+    *p2 = *p2;
 }
 
 

@@ -3,7 +3,11 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "doca_gw.h"
 
+
+#define GW_IPV4 (4)
+#define GW_IPV6 (6)
 #define GW_VXLAN_PORT (4789)
 #define GW_GTPU_PORT  (2152)
 
@@ -65,4 +69,5 @@ int gw_parse_packet(uint8_t *data, int len, struct gw_pkt_info *pinfo);
  */
 int gw_parse_pkt_str(struct gw_pkt_info *pinfo, char *str, int len);
 
+void gw_init_pipeline(struct doca_gw_port *p1, struct doca_gw_port *p2);
 #endif
