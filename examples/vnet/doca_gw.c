@@ -1,5 +1,6 @@
 #include "doca_gw.h"
 #include "doca_log.h"
+#include "doca_gw_dpdk.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -36,6 +37,7 @@ int doca_gw_init(struct doca_gw_cfg *cfg,struct doca_gw_error *err)
     if (err) {
         *err = *err;
     }
+	doca_gw_init_dpdk(cfg);
     return 0;
 }
 
@@ -136,13 +138,13 @@ struct doca_gw_pipeline *doca_gw_create_pipe(struct doca_gw_pipeline_cfg *cfg, s
     static uint32_t pipe_id = 1;
     struct doca_gw_pipeline *pl = malloc(sizeof(struct doca_gw_pipeline));
     memset(pl,0,sizeof(struct doca_gw_pipeline));
-    *err = *err;
 
     if (cfg != NULL && pl != NULL) {
         // allocate what is needed
         pl->id = pipe_id++;
         printf("pipeline: %s, id = %d was created successfully \n",cfg->name, pl->id);
     }
+	pl->handler = doca_gw_dpdk_create_pipe(cfg, err);
     return pl;
 }
 

@@ -155,9 +155,8 @@ static void gw_build_match_tun_and_5tuple(struct doca_gw_match *match)
 {
     match->out_dst_ip.a.ipv4_addr = 0xffffffff;
     match->out_dst_ip.type = DOCA_IPV4;
-    match->out_l4_type = DOCA_IPV4;
-    match->out_dst_port = rte_be_to_cpu_16(4789); // VXLAN (change to enum/define)
-
+    match->out_l4_type = IPPROTO_UDP;
+    match->out_dst_port = DOCA_VXLAN_DEFAULT_PORT; // VXLAN (change to enum/define)
 
     match->tun.type = DOCA_TUN_VXLAN;
     match->tun.vxlan.tun_id = 0xffffffff;

@@ -10,4 +10,5 @@ sources = files('main.c', 'doca_gw.h', 'doca_gw.c'
     , 'doca_kpi.h' ,'doca_kpi.c'
     , 'doca_fib.h' ,'doca_fib.c'
     , 'doca_gauge.h' ,'doca_gauge.c'
+    , 'doca_gw_dpdk.h', 'doca_gw_dpdk.c'
 )
