@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <sys/time.h>
 #include <inttypes.h>
 #include <sys/types.h>
 #include <sys/queue.h>
@@ -27,6 +28,7 @@
 #include <rte_cycles.h>
 
 #include "doca_gw.h"
+#include "doca_pcap.h"
 #include "gw.h"
 #include "gw_ft.h"
 
@@ -38,6 +40,8 @@ static volatile bool force_quit;
 static uint16_t port_id;
 static uint16_t nr_queues = 2;
 struct rte_mempool *mbuf_pool;
+static const char *pcap_file_name = "/var/opt/rbaryanai/vnet/build/examples/vnet/test.pcap";
+static struct doca_pcap_hander *ph;
 
 static char strbuff[DEBUG_BUFF_SIZE];
 struct gw_ft *gw_ft;
@@ -46,6 +50,16 @@ struct gw_entry {
     int total_pkts;
     char readble_str[GW_ENTRY_BUFF_SIZE];
 };
+
+static inline uint64_t gw_get_time_usec(void)
+{
+    //TODO: this is very bad way to do it
+    //need to set start time and use rte_
+    struct timeval tv;
+    gettimeofday(&tv,NULL);
+
+    return tv.tv_sec * 1000000 + tv.tv_usec;
+}
 
 static
 void gw_handle_packet(struct gw_pkt_info *pinfo)
@@ -62,6 +76,8 @@ void gw_handle_packet(struct gw_pkt_info *pinfo)
     entry = (struct gw_entry *) &ctx->data[0];
     entry->total_pkts++;
     printf("total packets %d\n",entry->total_pkts);
+    doca_pcap_write(ph,pinfo->outer.l2, pinfo->len, gw_get_time_usec(), 0); 
+
 }
 
 
@@ -219,6 +235,11 @@ init_port(void)
 static void
 signal_handler(int signum)
 {
+        if (ph != NULL) {
+            doca_pcap_file_stop(ph);
+            ph = NULL;
+        }
+
 	if (signum == SIGINT || signum == SIGTERM) {
 		printf("\n\nSignal %d received, preparing to exit...\n",
 				signum);
@@ -306,6 +327,8 @@ main(int argc, char **argv)
             rte_exit(EXIT_FAILURE,"failed to init doca");
         }
         printf("success!\n");
+
+        ph = doca_pcap_file_start(pcap_file_name);
 
 	main_loop();
 
