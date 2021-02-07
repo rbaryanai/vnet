@@ -45,15 +45,19 @@ int gw_ft_key_fill(struct gw_pkt_info *pinfo, struct gw_ft_key *key)
             printf("unsupported l4 %d\n",key->protocol);
             return -1;
     }
+
+    if ( pinfo->tun_type != GW_TUN_NONE ) {
+        key->tun_type = pinfo->tun_type;
+        key->vni = pinfo->tun.vni;
+    }    
+
     return 0;
 }
 
 
 
-int gw_ft_key_equal(struct gw_ft_key *key1, struct gw_ft_key *key2)
+bool gw_ft_key_equal(struct gw_ft_key *key1, struct gw_ft_key *key2)
 {
-    return key1->ipv4_1 == key2->ipv4_1 && key1->port_1 == key2->port_1 &&
-           key1->ipv4_2 == key2->ipv4_2 && key1->port_2 == key2->port_2 &&
-           key1->protocol == key2->protocol; 
+    return memcmp(key1, key2, sizeof(struct gw_ft_key)) == 0;
 }
 

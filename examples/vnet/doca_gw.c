@@ -44,6 +44,9 @@ int doca_gw_port_start(struct doca_gw_port_cfg *cfg, struct doca_gw_port *port, 
                 printf("port is dpdk, matching port id\n");
                 // init all required data sturcures for port.
                 break;
+            case DOCA_GW_PORT_DPDK_BY_ID:
+                printf("port is dpdk, matching port id:%s\n", cfg->devargs);
+                break;
             default:
                 printf("unsupported port type\n");
                 err->message = "unsupported port type\n";

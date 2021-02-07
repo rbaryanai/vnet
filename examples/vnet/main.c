@@ -28,27 +28,42 @@
 
 #include "doca_gw.h"
 #include "gw.h"
+#include "gw_ft.h"
 
-
+#define GW_MAX_FLOWS (4096)
 #define DEBUG_BUFF_SIZE (4096)
+#define GW_ENTRY_BUFF_SIZE (128)
 static volatile bool force_quit;
 
 static uint16_t port_id;
 static uint16_t nr_queues = 2;
 struct rte_mempool *mbuf_pool;
 
+static char strbuff[DEBUG_BUFF_SIZE];
+struct gw_ft *gw_ft;
 
+struct gw_entry {
+    int total_pkts;
+    char readble_str[GW_ENTRY_BUFF_SIZE];
+};
 
-
-static inline void
-print_ether_addr(const char *what, struct rte_ether_addr *eth_addr)
+static
+void gw_handle_packet(struct gw_pkt_info *pinfo)
 {
-	char buf[RTE_ETHER_ADDR_FMT_SIZE];
-	rte_ether_format_addr(buf, RTE_ETHER_ADDR_FMT_SIZE, eth_addr);
-	printf("%s%s", what, buf);
+    struct gw_ft_user_ctx *ctx;
+    struct gw_entry *entry;
+    if(!gw_ft_find(gw_ft, pinfo, &ctx)){
+        printf("failed to find entry- trying to allocate\n");
+        if (!gw_ft_add_new(gw_ft, pinfo,&ctx)) {
+            printf("failed create new entry\n");
+            return;
+        }
+    }
+    entry = (struct gw_entry *) &ctx->data[0];
+    entry->total_pkts++;
+    printf("total packets %d\n",entry->total_pkts);
 }
 
-static char strbuff[DEBUG_BUFF_SIZE];
 
 static void
 main_loop(void)
@@ -73,8 +88,9 @@ main_loop(void)
                         memset(&pinfo,0, sizeof(struct gw_pkt_info)); 
                         if(gw_parse_packet(d,  rte_pktmbuf_pkt_len(m), &pinfo)){
                             if (pinfo.outer.l3_type == 4) {
-                                gw_parse_pkt_str(&pinfo, strbuff,DEBUG_BUFF_SIZE);
-                                printf("got mbuf on port == %d,\n %s", m->port,strbuff);
+                                gw_handle_packet(&pinfo);
+                                //gw_parse_pkt_str(&pinfo, strbuff,DEBUG_BUFF_SIZE);
+                                //printf("got mbuf on port == %d,\n %s", m->port,strbuff);
                             }
                         }
                         rte_eth_tx_burst((m->port == 0) ? 1 : 0, 0, &m, 1);
@@ -262,6 +278,20 @@ init_dpdk(int argc, char **argv)
 }
 
 
+static int init_gw(void)
+{
+    if (init_doca()){
+        return -1;
+    }
+
+    gw_ft = gw_ft_create(GW_MAX_FLOWS , sizeof(struct gw_entry));
+    if(!gw_ft) {
+        return -1;
+    }
+
+    return 0;
+}
+
 int
 main(int argc, char **argv)
 {
@@ -272,7 +302,7 @@ main(int argc, char **argv)
 	init_port();
 
         printf("starting doca\n");
-        if (init_doca()){
+        if (init_gw()){
             rte_exit(EXIT_FAILURE,"failed to init doca");
         }
         printf("success!\n");
