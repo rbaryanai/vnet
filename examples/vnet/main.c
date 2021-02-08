@@ -266,6 +266,11 @@ static int init_doca(void)
     ret+=doca_gw_port_start(&cfg_port0, &port0, &err);
     ret+=doca_gw_port_start(&cfg_port1, &port1, &err);
 
+    if (!ret) {
+        //TODO: print errors
+        fprintf(stderr, "log:\n");
+    }
+
     return ret;
 }
 

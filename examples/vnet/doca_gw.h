@@ -13,6 +13,7 @@ enum doca_gw_error_type {
     DOCA_ERROR_UNKNOWN,
     DOCA_ERROR_UNSUPPORTED,
     DOCA_ERROR_TABLE_IS_FULL,
+    DOCA_ERROR_OOM,
 };      
 
 /**
@@ -67,12 +68,11 @@ struct doca_gw_action {
     bool decap;
     // tunnel
 
-    struct doca_ip_addr in_src_ip;
-    struct doca_ip_addr in_dst_ip;
+    struct doca_ip_addr mod_src_ip;
+    struct doca_ip_addr mod_dst_ip;
 
-    uint8_t  in_proto_type;
-    uint16_t in_src_port;
-    uint16_t in_dst_port;
+    uint16_t mod_src_port;
+    uint16_t mod_dst_port;
     
     struct doca_gw_encap_action encap;
 };
@@ -84,7 +84,6 @@ struct doca_gw_modify {
 enum doca_gw_port_type {
     DOCA_GW_PORT_DPDK,
     DOCA_GW_PORT_DPDK_BY_ID,
-
 };
 
 struct doca_gw_port_cfg {
@@ -116,10 +115,10 @@ struct doca_mirror_cfg {
  */
 struct doca_gw_pipeline_cfg {
     const char *name;
-    struct doca_gw_port   *port;
-    struct doca_gw_match  *match;
-    struct doca_gw_action *action;
-    bool  count; // count for entire pipe
+    struct doca_gw_port    *port;
+    struct doca_gw_match   *match;
+    struct doca_gw_action  *action;
+    bool                   count; // count for entire pipe
     struct doca_mirror_cfg *mirror;
 };
 
@@ -201,15 +200,8 @@ int doca_gw_port_stop(struct doca_gw_port *port);
  */
 int doca_gw_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_gw_pipeline *pipeline);
 
-/**
- * @brief 
- *
- * @param match
- *
- * @return 
- */
-int doca_gw_create_session(struct doca_gw_pipeline *pipeline, struct doca_gw_match *match, 
-                           struct doca_gw_modify *mod,uint32_t fwd_tbl);
+int doca_gw_add_entry(struct doca_gw_pipeline *pipeline, struct doca_gw_match *match, 
+                      struct doca_gw_modify *mod,uint32_t fwd_tbl);
 
 /**
  * @brief 
@@ -218,6 +210,6 @@ int doca_gw_create_session(struct doca_gw_pipeline *pipeline, struct doca_gw_mat
  *
  * @return 
  */
-int doca_gw_delete_session(void * session);
+int doca_gw_rm_entry(void * session);
 
 #endif

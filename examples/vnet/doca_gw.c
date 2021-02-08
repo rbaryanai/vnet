@@ -1,10 +1,17 @@
 #include "doca_gw.h"
+#include "doca_log.h"
 
 #include <stdio.h>
 
+DOCA_LOG_MODULE(doca_gw)
+
 int doca_gw_init(struct doca_gw_cfg *cfg,struct doca_gw_error *err)
 {
+    DOCA_LOG_ERR("total sessions = %d\n",cfg->total_sessions);
     printf("total sessions = %d\n",cfg->total_sessions);
+    if (err) {
+        *err = *err;
+    }
     return 0;
 }
 
@@ -16,8 +23,8 @@ int doca_gw_init(struct doca_gw_cfg *cfg,struct doca_gw_error *err)
  *
  * @return 
  */
-int doca_gw_create_session(struct doca_gw_pipeline *pipeline, struct doca_gw_match *match, 
-                           struct doca_gw_modify *mod,uint32_t fwd_tbl)
+int doca_gw_add_entry(struct doca_gw_pipeline *pipeline, struct doca_gw_match *match, 
+                      struct doca_gw_modify *mod,uint32_t fwd_tbl)
 {
     printf("port id=%p, match =%pi mod %p, fwd %d\n", pipeline, match, mod, fwd_tbl);
     return 0;

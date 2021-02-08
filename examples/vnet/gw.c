@@ -2,6 +2,7 @@
 #include "gw.h"
 #include "doca_gw.h"
 #include "doca_utils.h"
+#include "doca_log.h"
 #include <stdio.h>
 #include <arpa/inet.h>
 #include "rte_ether.h"
@@ -12,6 +13,7 @@
 #include "rte_gre.h"
 #include "rte_vxlan.h"
 
+DOCA_LOG_MODULE(GW)
 
 #define GW_VARIFY_LEN(pkt_len, off) if (off > pkt_len) { \
                                             return -1; \
