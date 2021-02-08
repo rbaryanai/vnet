@@ -29,12 +29,19 @@
 
 #include "doca_gw.h"
 #include "doca_pcap.h"
+#include "doca_log.h"
 #include "gw.h"
 #include "gw_ft.h"
 
+DOCA_LOG_MODULE(main)
+
+#define GW_PKT_L2(M) rte_pktmbuf_mtod(M,uint8_t *)
+#define GW_PKT_LEN(M) rte_pktmbuf_pkt_len(M)
+
 #define GW_MAX_FLOWS (4096)
-#define DEBUG_BUFF_SIZE (4096)
 #define GW_ENTRY_BUFF_SIZE (128)
+#define GW_RX_BURST_SIZE (32)
+
 static volatile bool force_quit;
 
 static uint16_t port_id;
@@ -43,7 +50,6 @@ struct rte_mempool *mbuf_pool;
 static const char *pcap_file_name = "/var/opt/rbaryanai/vnet/build/examples/vnet/test.pcap";
 static struct doca_pcap_hander *ph;
 
-static char strbuff[DEBUG_BUFF_SIZE];
 struct gw_ft *gw_ft;
 
 struct gw_entry {
@@ -82,35 +88,31 @@ void gw_handle_packet(struct gw_pkt_info *pinfo)
 
 
 static void
-main_loop(void)
+gw_process_pkts(void)
 {
-	struct rte_mbuf *mbufs[32];
+	struct rte_mbuf *mbufs[GW_RX_BURST_SIZE];
 	struct rte_flow_error error;
 	uint16_t nb_rx;
 	uint16_t i;
 	uint16_t j;
-	struct rte_mbuf *m = NULL;
-        uint8_t *d;
         struct gw_pkt_info pinfo;
 
 	while (!force_quit) {
             for (port_id = 0; port_id < 2; port_id++) { 
                 for (i = 0; i < nr_queues; i++) {
-                    nb_rx = rte_eth_rx_burst(port_id, i, mbufs, 32);
+                    nb_rx = rte_eth_rx_burst(port_id, i, mbufs, GW_RX_BURST_SIZE);
                     if (nb_rx) {
-                    for (j = 0; j < nb_rx; j++) {
-                        m = mbufs[j];
-                        d = rte_pktmbuf_mtod(m,uint8_t *);
-                        memset(&pinfo,0, sizeof(struct gw_pkt_info)); 
-                        if(gw_parse_packet(d,  rte_pktmbuf_pkt_len(m), &pinfo)){
-                            if (pinfo.outer.l3_type == 4) {
-                                gw_handle_packet(&pinfo);
-                                //gw_parse_pkt_str(&pinfo, strbuff,DEBUG_BUFF_SIZE);
-                                //printf("got mbuf on port == %d,\n %s", m->port,strbuff);
+                        for (j = 0; j < nb_rx; j++) {
+                            memset(&pinfo,0, sizeof(struct gw_pkt_info)); 
+                            if(gw_parse_packet(GW_PKT_L2(mbufs[i]),GW_PKT_LEN(mbufs[i]), &pinfo)){
+                                if (pinfo.outer.l3_type == 4) {
+                                    gw_handle_packet(&pinfo);
+                                    //gw_parse_pkt_str(&pinfo, strbuff,DEBUG_BUFF_SIZE);
+                                    //printf("got mbuf on port == %d,\n %s", m->port,strbuff);
+                                }
                             }
+                            rte_eth_tx_burst((mbufs[i]->port == 0) ? 1 : 0, 0, &mbufs[i], 1);
                         }
-                        rte_eth_tx_burst((m->port == 0) ? 1 : 0, 0, &m, 1);
-                    }
                     }
                 }
             }
@@ -177,7 +179,7 @@ init_port(void)
 			port_id, strerror(-ret));
 
 	port_conf.txmode.offloads &= dev_info.tx_offload_capa;
-	printf(":: initializing port: %d\n", port_id);
+	DOCA_LOG_INFO(":: initializing port: %d\n", port_id);
 	ret = rte_eth_dev_configure(port_id,
 				nr_queues, nr_queues, &port_conf);
 	if (ret < 0) {
@@ -229,7 +231,7 @@ init_port(void)
 
 	assert_link_status();
 
-	printf(":: initializing port: %d done\n", port_id);
+	DOCA_LOG_INFO(":: initializing port: %d done\n", port_id);
 }
 
 static void
@@ -327,15 +329,15 @@ main(int argc, char **argv)
 	port_id = 1;
 	init_port();
 
-        printf("starting doca\n");
+        DOCA_LOG_INFO("starting doca\n");
         if (init_gw()){
             rte_exit(EXIT_FAILURE,"failed to init doca");
         }
-        printf("success!\n");
+        DOCA_LOG_INFO("GW initiated!\n");
 
         ph = doca_pcap_file_start(pcap_file_name);
 
-	main_loop();
+	gw_process_pkts();
 
 	return 0;
 }
