@@ -1,9 +1,13 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+
 #include "gw.h"
 #include "doca_gw.h"
 #include "doca_utils.h"
 #include "doca_log.h"
-#include <stdio.h>
+
 #include <arpa/inet.h>
 #include "rte_ether.h"
 #include "rte_mbuf.h"
@@ -24,12 +28,11 @@ DOCA_LOG_MODULE(GW)
 #define GW_IPV4_EXPAND(b) b[0],b[1],b[2],b[3]
 
 
-static struct doca_gw_pipeline pipeline1 = {0};
 static struct doca_fwd_tbl sw_fwd_tbl = {0};
 
 
 
-static int gw_build_underlay_overlay(struct doca_gw_pipeline *pipeline, struct doca_gw_port *port)
+static struct doca_gw_pipeline *gw_build_underlay_overlay(struct doca_gw_port *port)
 {
     // configure a pipeline. values of 0 means the parameters
     // will not be used. mask means for each entry a value should be provided
@@ -62,7 +65,7 @@ static int gw_build_underlay_overlay(struct doca_gw_pipeline *pipeline, struct d
     pcfg.count  = false;
     pcfg.mirror =  false;;
 
-    return doca_gw_create_pipe(&pcfg, pipeline);
+    return doca_gw_create_pipe(&pcfg);
 }
 
 
@@ -85,20 +88,6 @@ static int gw_build_default_fwd_to_sw(struct doca_fwd_tbl *tbl)
 
     return doca_gw_add_fwd(&cfg, tbl);
 }
-
-void gw_init_pipeline(struct doca_gw_port *p1, struct doca_gw_port *p2)
-{
-        // create pipeline
-    if (gw_build_underlay_overlay(&pipeline1, p1)){
-        printf("failed to allocate pipeline\n");
-    }
-
-    if (gw_build_default_fwd_to_sw(&sw_fwd_tbl)){
-        printf("failed to add SW fwd table\n");
-    }
-    *p2 = *p2;
-}
-
 
 static 
 int gw_parse_pkt_format(uint8_t *data, int len, bool l2, struct gw_pkt_format *fmt)
@@ -318,3 +307,20 @@ int gw_parse_pkt_str(struct gw_pkt_info *pinfo, char *str, int len)
 
     return off;
 }
+
+struct doca_gw_pipeline *gw_init_ol_to_ul_pipeline(struct doca_gw_port *p)
+{
+    struct doca_gw_pipeline *pl;
+
+    pl = gw_build_underlay_overlay(p);
+
+    if ( pl == NULL) {
+        DOCA_LOG_ERR("failed to allocate pipeline\n");
+        return pl;
+    }
+
+    return pl;
+}
+
+
+

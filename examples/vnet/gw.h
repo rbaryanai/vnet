@@ -69,5 +69,24 @@ int gw_parse_packet(uint8_t *data, int len, struct gw_pkt_info *pinfo);
  */
 int gw_parse_pkt_str(struct gw_pkt_info *pinfo, char *str, int len);
 
-void gw_init_pipeline(struct doca_gw_port *p1, struct doca_gw_port *p2);
+/**
+ * @brief - overlay to underlay pipeline.
+ *  match on:
+ *            outer dst_ip/vni
+ *            inner 5-tuple
+ *        
+ *  modify:
+ *            decap
+ *            inner-dst ip
+ *
+ *            count
+ *            meter
+ *
+ *  fwd:      RSS-table
+ *
+ * @param p
+ *
+ * @return 
+ */
+struct doca_gw_pipeline *gw_init_ol_to_ul_pipeline(struct doca_gw_port *p);
 #endif

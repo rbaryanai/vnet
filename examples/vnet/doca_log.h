@@ -34,16 +34,21 @@ void register_doca_log(struct doca_log_module *module, const char *name);
 
 void doca_log(struct doca_log_module *module, enum doca_log_level level, const char *format,...);
 
-#define DOCA_LOG_ERR(format,...) doca_log(&module_instance, DOCA_LOG_LEVEL_ERR,"error:[%s]," format,module_instance.name,##__VA_ARGS__);
-#define DOCA_LOG_WARN(format, ...) doca_log(&module_instance, DOCA_LOG_LEVEL_ERR,"warn:[%s]," format,module_instance.name,__VA_ARGS__); 
-#define DOCA_LOG_INFO(format, ...) doca_log(&module_instance, DOCA_LOG_LEVEL_ERR,"info:[%s]," format,module_instance.name,##__VA_ARGS__); 
-#define DOCA_LOG_DBG(format, ...) doca_log(&module_instance, DOCA_LOG_LEVEL_ERR,"dbg:[%s]," format,module_instance.name,__VA_ARGS__); 
+#define DOCA_LOG_CRIT(format,...) doca_log(&module_instance, DOCA_LOG_LEVEL_CRIT,\
+                                  "critical:[%s]," format "\n",module_instance.name,##__VA_ARGS__);
+#define DOCA_LOG_ERR(format,...) doca_log(&module_instance, DOCA_LOG_LEVEL_ERR, \
+                                  "error:[%s]," format "\n",module_instance.name,##__VA_ARGS__);
+#define DOCA_LOG_WARN(format, ...) doca_log(&module_instance, DOCA_LOG_LEVEL_WARNING, \
+                                  "warn:[%s]," format "\n",module_instance.name,##__VA_ARGS__); 
+#define DOCA_LOG_INFO(format, ...) doca_log(&module_instance, DOCA_LOG_LEVEL_INFO, \
+                                  "info:[%s]," format "\n",module_instance.name,##__VA_ARGS__); 
+#define DOCA_LOG_DBG(format, ...) doca_log(&module_instance, DOCA_LOG_LEVEL_DEBUG, \
+                                  "dbg:[%s]," format "\n",module_instance.name,##__VA_ARGS__); 
 
 enum doca_log_type {
     DOCA_LOG_TYPE_NONE,
     DOCA_LOG_TYPE_STDERR,
 };
-
 
 void doca_log_cfg(enum doca_log_type type, const char *cfg);
 

@@ -1,9 +1,18 @@
 #include "doca_gw.h"
 #include "doca_log.h"
-
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
 
 DOCA_LOG_MODULE(doca_gw)
+
+struct doca_gw_pipeline {
+    void * handler;
+    uint32_t id;
+};
+
+
 
 int doca_gw_init(struct doca_gw_cfg *cfg,struct doca_gw_error *err)
 {
@@ -80,16 +89,20 @@ int doca_gw_port_stop(struct doca_gw_port *port)
 }
 
 
-int doca_gw_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_gw_pipeline *pipeline)
+struct doca_gw_pipeline *doca_gw_create_pipe(struct doca_gw_pipeline_cfg *cfg)
 {
     static uint32_t pipe_id = 1;
-    if (cfg != NULL && pipeline != NULL) {
+    struct doca_gw_pipeline *pl = malloc(sizeof(struct doca_gw_pipeline));
+    memset(pl,0,sizeof(struct doca_gw_pipeline));
+
+
+
+    if (cfg != NULL && pl != NULL) {
         // allocate what is needed
-        pipeline->id = pipe_id++;
-        printf("pipeline: %s, id = %d was created successfully \n",cfg->name, pipeline->id);
-        return 0;
+        pl->id = pipe_id++;
+        printf("pipeline: %s, id = %d was created successfully \n",cfg->name, pl->id);
     }
-    return -1;
+    return pl;
 }
 
 

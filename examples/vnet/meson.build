@@ -5,4 +5,5 @@ sources = files('main.c', 'doca_gw.h', 'doca_gw.c'
     , 'gw_ft_key.h', 'gw_ft_key.c' , 'gw_ft.c' 
     , 'gw_ft.h' , 'doca_pcap.h' , 'doca_pcap.c'
     , 'doca_log.h' , 'doca_log.c'
+    , 'gw_port.h' , 'gw_port.c'
 )

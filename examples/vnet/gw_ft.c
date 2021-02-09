@@ -71,7 +71,7 @@ static void * gw_ft_aging_main(void *void_ptr)
     while(!ft->stop_aging_thread){
         uint64_t t = rte_rdtsc();
 
-        DOCA_LOG_INFO("total entries: %d\n", (int) (ft->stats.add - ft->stats.rm));
+        DOCA_LOG_INFO("total entries: %d", (int) (ft->stats.add - ft->stats.rm));
 
         if( rte_spinlock_trylock(&ft->lock) ) {
             for(i = 0 ; i < ft->cfg.size ; i++){
@@ -81,7 +81,7 @@ static void * gw_ft_aging_main(void *void_ptr)
                         /* TODO: support in HW */
                     }
                     if(node->expiration < t){
-                        DOCA_LOG_INFO("removing flow\n");
+                        DOCA_LOG_INFO("removing flow");
                         gw_ft_destory_flow(ft, &node->key);
                         break;
                     }
@@ -142,12 +142,12 @@ struct gw_ft *gw_ft_create(int size, uint32_t user_data_size)
     }
     alloc_size = sizeof(struct gw_ft) +
 		     sizeof(struct  gw_ft_bucket) * act_size;
-   DOCA_LOG_DBG("alloc size =%d\n",alloc_size);
+   DOCA_LOG_DBG("alloc size =%d",alloc_size);
 
     ft = malloc(alloc_size*2);
     memset(ft, 0 , alloc_size);
     if (ft == NULL) {
-        printf("error: not mem\n");
+        DOCA_LOG_CRIT("no mem");
         return NULL;
     }
 
@@ -156,7 +156,7 @@ struct gw_ft *gw_ft_create(int size, uint32_t user_data_size)
     ft->cfg.size = act_size;
     ft->cfg.mask = act_size - 1;
         
-    DOCA_LOG_DBG("FT create size=%d, user_data_size=%d\n",size, user_data_size);
+    DOCA_LOG_DBG("FT create size=%d, user_data_size=%d",size, user_data_size);
 
     rte_spinlock_init(&ft->lock);
     gw_ft_aging_thread_start(ft);
@@ -176,7 +176,7 @@ struct gw_ft_entry *_gw_ft_find(struct gw_ft *ft, struct gw_ft_key *key)
 
     hash = gw_ft_key_hash(key);
     idx = hash & ft->cfg.mask;
-    DOCA_LOG_DBG("looking for index%d\n",idx);
+    DOCA_LOG_DBG("looking for index%d",idx);
     first = &ft->buckets[idx].head;
     LIST_FOREACH(node, first, next) {
         if (gw_ft_key_equal(&node->key, key)){
@@ -231,7 +231,7 @@ bool gw_ft_add_new(struct gw_ft *ft, struct gw_pkt_info *pinfo,struct gw_ft_user
     new_e->expiration = t + sec*10;
     new_e->user_ctx.fid = ft->fid_ctr++;
 
-    DOCA_LOG_DBG("defined new flow %llu\n", (unsigned int long long)new_e->user_ctx.fid);
+    DOCA_LOG_DBG("defined new flow %llu", (unsigned int long long)new_e->user_ctx.fid);
     memcpy(&new_e->key, &key, sizeof(struct gw_ft_key));
     hash = gw_ft_key_hash(&key);
     idx = hash & ft->cfg.mask;
@@ -239,7 +239,7 @@ bool gw_ft_add_new(struct gw_ft *ft, struct gw_pkt_info *pinfo,struct gw_ft_user
 
     rte_spinlock_lock(&ft->lock);
     LIST_INSERT_HEAD(first, new_e, next);
-    DOCA_LOG_DBG("added on index %d\n",idx);
+    DOCA_LOG_DBG("added on index %d",idx);
     *ctx = &new_e->user_ctx;
     ft->stats.add++;
     rte_spinlock_unlock(&ft->lock);

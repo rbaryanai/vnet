@@ -100,10 +100,7 @@ struct doca_gw_port {
  * @brief - pipe identifier.
  *  user defines a pipe before using it
  */
-struct doca_gw_pipeline {
-    void * handler;
-    uint32_t id;
-};
+struct doca_gw_pipeline; 
 
 struct doca_mirror_cfg {
     uint32_t id;
@@ -192,13 +189,14 @@ int doca_gw_port_stop(struct doca_gw_port *port);
 /**
  * @brief 
  *
- * @param port
- * @param cfg
- * @param pipeline
+ * @param 
+ * @param match
+ * @param mod
+ * @param fwd_tbl
  *
  * @return 
  */
-int doca_gw_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_gw_pipeline *pipeline);
+struct doca_gw_pipeline *doca_gw_create_pipe(struct doca_gw_pipeline_cfg *cfg);
 
 int doca_gw_add_entry(struct doca_gw_pipeline *pipeline, struct doca_gw_match *match, 
                       struct doca_gw_modify *mod,uint32_t fwd_tbl);
