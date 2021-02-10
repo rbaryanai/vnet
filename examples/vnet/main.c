@@ -54,8 +54,8 @@ static struct doca_pcap_hander *ph;
 struct ex_gw {
     struct gw_ft *ft;
 
-    struct doca_gw_port port0; 
-    struct doca_gw_port port1; 
+    struct doca_gw_port *port0; 
+    struct doca_gw_port *port1; 
 
     // pipeline of overlay to underlay
     struct doca_gw_pipeline *p1_over_under[GW_NUM_OF_PORTS];
@@ -82,15 +82,41 @@ static inline uint64_t gw_get_time_usec(void)
 }
 
 static
+int gw_handle_new_flow(struct gw_pkt_info *pinfo, struct gw_ft_user_ctx **ctx)
+    
+{
+    enum gw_classification cls = gw_classifiy_pkt(pinfo);
+    
+    switch(cls) {
+        case GW_CLS_OL_TO_UL:
+            if (!gw_ft_add_new(gw_ins->ft, pinfo,ctx)) {
+                DOCA_LOG_DBG("failed create new entry");
+                return -1;
+            }
+            // add flow to pipeline
+            break;
+
+        case GW_CLS_OL_TO_OL:
+            if (!gw_ft_add_new(gw_ins->ft, pinfo,ctx)) {
+                DOCA_LOG_DBG("failed create new entry");
+                return -1;
+            }
+            // add flow to pipeline
+            break;
+        default:
+            return -1;
+    }
+    return 0;
+}
+
+static
 void gw_handle_packet(struct gw_pkt_info *pinfo)
 {
     struct gw_ft_user_ctx *ctx;
     struct gw_entry *entry;
 
     if(!gw_ft_find(gw_ins->ft, pinfo, &ctx)){
-        DOCA_LOG_DBG("failed to find entry- trying to allocate");
-        if (!gw_ft_add_new(gw_ins->ft, pinfo,&ctx)) {
-            DOCA_LOG_DBG("failed create new entry");
+        if (!gw_handle_new_flow(pinfo,&ctx)) {
             return;
         }
     }
@@ -156,9 +182,11 @@ signal_handler(int signum)
 static int init_doca(void)
 {
     int ret = 0;
-    struct doca_gw_port_cfg cfg_port0 = { DOCA_GW_PORT_DPDK_BY_ID, "0" };
-    struct doca_gw_port_cfg cfg_port1 = { DOCA_GW_PORT_DPDK_BY_ID, "1" };
+
+    struct gw_port_cfg cfg_port0 = { .n_queues = 4, .port_id = 0 };
+    struct gw_port_cfg cfg_port1 = { .n_queues = 4, .port_id = 1 };
     struct doca_gw_error err = {0};
+
     struct doca_gw_cfg cfg = {GW_MAX_FLOWS};
     if (doca_gw_init(&cfg,&err)) { 
         DOCA_LOG_ERR("failed to init doca:%s",err.message);
@@ -166,16 +194,17 @@ static int init_doca(void)
     }
 
     // adding ports
-    ret+=doca_gw_port_start(&cfg_port0, &gw_ins->port0, &err);
-    ret+=doca_gw_port_start(&cfg_port1, &gw_ins->port1, &err);
+    gw_ins->port0 = gw_init_doca_port(&cfg_port0);
+    gw_ins->port1 = gw_init_doca_port(&cfg_port1);
 
-    if (ret) {
+    if (gw_ins->port0 == NULL || gw_ins->port1 == NULL) {
         DOCA_LOG_ERR("failed to start port %s",err.message);
         return ret;
     }
 
-
-    gw_ins->p1_over_under[0] = gw_init_ol_to_ul_pipeline(&gw_ins->port0);
+    // overlay to unserlay pipeline
+    gw_ins->p1_over_under[0] = gw_init_ol_to_ul_pipeline(gw_ins->port0);
+    gw_ins->p1_over_under[1] = gw_init_ol_to_ul_pipeline(gw_ins->port1);
 
     return ret;
 }

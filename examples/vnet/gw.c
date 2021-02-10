@@ -27,10 +27,63 @@ DOCA_LOG_MODULE(GW)
 #define GW_IPV4_STR_FMT "%d:%d:%d:%d"
 #define GW_IPV4_EXPAND(b) b[0],b[1],b[2],b[3]
 
+#define GW_MAX_PORT_ID  (2)
 
-static struct doca_fwd_tbl sw_fwd_tbl = {0};
+struct doca_fwd_tbl *sw_rss_fwd_tbl_port[GW_MAX_PORT_ID];
+
+static
+struct doca_fwd_tbl *gw_build_rss_fwd(int n_queues)
+{
+    int i;
+    struct doca_fwd_table_cfg cfg = {0};
+    uint16_t *queues;
+
+    queues = malloc(sizeof(uint16_t) * n_queues);
+
+    for(i = 0 ; i < n_queues ; i++){
+        queues[i] = i;
+    }
+
+    cfg.type = DOCA_FWD_RSS;
+    cfg.rss.queues = queues;
+    cfg.rss.num_queues = n_queues;
+    return doca_gw_create_fwd_tbl(&cfg);
+}
 
 
+
+static void gw_build_underlay_overlay_match(struct doca_gw_match *match)
+{
+    match->out_dst_ip.a.ipv4_addr = 0xffffffff;
+    match->out_dst_ip.type = DOCA_IPV4;
+    match->out_proto_type = DOCA_IPV4;
+    match->out_dst_port = rte_be_to_cpu_16(4789); // VXLAN (change to enum/define)
+
+
+    match->tun.type = DOCA_TUN_VXLAN;
+    match->tun.tun_id = 0xffffffff;
+
+    //inner
+    match->in_dst_ip.a.ipv4_addr = 0xffffffff;
+    match->in_src_ip.a.ipv4_addr = 0xffffffff;
+    match->in_src_ip.type = DOCA_IPV4;
+    match->in_proto_type = 0xff;
+
+    match->in_src_port = 0xffff;
+    match->in_dst_port = 0xffff;
+}
+
+static void gw_build_underlay_overlay_actions(struct doca_gw_actions *actions)
+{
+    // chaning destination ip of inner packet (after decap)
+    actions->decap = true;
+    actions->mod_dst_ip.a.ipv4_addr = 0xffffffff;
+};
+
+static void gw_fill_monior(struct doca_gw_monitor *monitor)
+{
+    monitor->count = true;
+}
 
 static struct doca_gw_pipeline *gw_build_underlay_overlay(struct doca_gw_port *port)
 {
@@ -38,55 +91,23 @@ static struct doca_gw_pipeline *gw_build_underlay_overlay(struct doca_gw_port *p
     // will not be used. mask means for each entry a value should be provided
     // a real value means a constant value and should not be added on any entry
     // added
-    struct doca_gw_pipeline_cfg pcfg = {0};
+    struct doca_gw_pipeline_cfg pipe_cfg = {0};
     struct doca_gw_match match = {0};
+    struct doca_gw_actions actions = {0};
+    struct doca_gw_monitor monitor = {0};
 
-    match.out_dst_ip.a.ipv4_addr = 0xffffffff;
-    match.out_dst_ip.type = DOCA_IPV4;
-    match.out_proto_type = DOCA_IPV4;
-    match.out_dst_port = 4789; // VXLAN (change to enum/define)
+    gw_build_underlay_overlay_match(&match);
+    gw_build_underlay_overlay_actions(&actions);
+    gw_fill_monior(&monitor);
 
+    pipe_cfg.name   = "overlay-to-underlay";
+    pipe_cfg.port   = port;
+    pipe_cfg.match  = &match;
+    pipe_cfg.actions = &actions;
+    pipe_cfg.monitor = &monitor;
+    pipe_cfg.count  = false;
 
-    match.tun.type = DOCA_TUN_VXLAN;
-    match.tun.tun_id = 0xffffffff;
-
-    //inner
-    match.in_dst_ip.a.ipv4_addr = 0xffffffff;
-    match.in_src_ip.a.ipv4_addr = 0xffffffff;
-    match.in_src_ip.type = DOCA_IPV4;
-    match.in_proto_type = 0xff;
-
-    match.in_src_port = 0xffff;
-    match.in_dst_port = 0xffff;
-
-    pcfg.name  = "overlay-to-underlay";
-    pcfg.port = port;
-    pcfg.match  = &match;
-    pcfg.count  = false;
-    pcfg.mirror =  false;;
-
-    return doca_gw_create_pipe(&pcfg);
-}
-
-
-
-
-static int gw_build_default_fwd_to_sw(struct doca_fwd_tbl *tbl)
-{
-#define GW_MAX_QUEUES 16
-    int i;
-    struct doca_fwd_table_cfg cfg = {0};
-    uint16_t queues[GW_MAX_QUEUES];
-
-    for(i = 0 ; i < GW_MAX_QUEUES ; i++){
-        queues[i] = i;
-    }
-
-    cfg.type = DOCA_SW_FWD;
-    cfg.s.queues = (uint16_t *) &queues;
-    cfg.s.num_queues = GW_MAX_QUEUES;
-
-    return doca_gw_add_fwd(&cfg, tbl);
+    return doca_gw_create_pipe(&pipe_cfg);
 }
 
 static 
@@ -307,6 +328,31 @@ int gw_parse_pkt_str(struct gw_pkt_info *pinfo, char *str, int len)
 
     return off;
 }
+/**
+ * @brief - decides about the type of the packet.
+ *  which pipeline should be exeuted
+ *
+ * @param pinfo
+ *
+ * @return 
+ */
+enum gw_classification gw_classifiy_pkt(struct gw_pkt_info *pinfo)
+{
+    struct rte_ipv4_hdr *ipv4hdr;
+    if (pinfo->tun_type != GW_TUN_VXLAN) {
+        DOCA_LOG_INFO("no tun");
+        return GW_BYPASS;
+    }
+
+    // ip prefix of 11.0.0.0/24 goes to underlay
+    ipv4hdr = (struct rte_ipv4_hdr *) pinfo->outer.l3;
+    if ((ipv4hdr->dst_addr & rte_cpu_to_be_32(0xff000000)) == rte_cpu_to_be_32(0x0b000000)){
+        DOCA_LOG_DBG("classified as overlay to underlay");
+        return GW_CLS_OL_TO_UL;
+    }
+
+    return GW_CLS_OL_TO_OL;
+}
 
 struct doca_gw_pipeline *gw_init_ol_to_ul_pipeline(struct doca_gw_port *p)
 {
@@ -322,5 +368,37 @@ struct doca_gw_pipeline *gw_init_ol_to_ul_pipeline(struct doca_gw_port *p)
     return pl;
 }
 
+struct doca_gw_port *gw_init_doca_port(struct gw_port_cfg *port_cfg)
+{
+#define GW_MAX_PORT_STR (128)
+    char port_id_str[GW_MAX_PORT_STR];
+    struct doca_gw_port_cfg doca_cfg_port; 
+    struct doca_gw_port *port;
+    struct doca_gw_error err = {0};
 
+    snprintf(port_id_str, GW_MAX_PORT_STR,"%d",port_cfg->port_id);
+
+    doca_cfg_port.type = DOCA_GW_PORT_DPDK_BY_ID;
+    doca_cfg_port.queues = port_cfg->n_queues;
+    doca_cfg_port.devargs = port_id_str;
+    doca_cfg_port.priv_data_size = sizeof(struct gw_port_cfg);
+
+    if (port_cfg->port_id >= GW_MAX_PORT_ID) {
+        DOCA_LOG_ERR("port id exceeds max ports id:%d",GW_MAX_PORT_ID);
+        return NULL;
+    }
+
+    // adding ports
+    port = doca_gw_port_start(&doca_cfg_port, &err);
+
+    if (port == NULL) {
+        DOCA_LOG_ERR("failed to start port %s",err.message);
+        return NULL;
+    }
+
+    *((struct gw_port_cfg *)doca_gw_port_priv_data(port)) = *port_cfg;
+    sw_rss_fwd_tbl_port[port_cfg->port_id] = gw_build_rss_fwd(port_cfg->n_queues);
+
+    return port;
+}
 

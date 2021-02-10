@@ -19,8 +19,10 @@ enum GW_TUN_TYPE {
     GW_TUN_GTPU,
 };
 
-int gw_init(void);
-
+struct gw_port_cfg {
+    uint16_t n_queues;
+    uint16_t port_id;
+};
 
 struct gw_pkt_format {
 
@@ -89,4 +91,32 @@ int gw_parse_pkt_str(struct gw_pkt_info *pinfo, char *str, int len);
  * @return 
  */
 struct doca_gw_pipeline *gw_init_ol_to_ul_pipeline(struct doca_gw_port *p);
+
+
+
+/**
+ * @brief - init doca port matching the provided configiration.
+ *
+ * @param port_cfg
+ *
+ * @return 
+ */
+struct doca_gw_port *gw_init_doca_port(struct gw_port_cfg *port_cfg);
+
+enum gw_classification {
+    GW_CLS_OL_TO_UL,
+    GW_CLS_OL_TO_OL,
+    GW_BYPASS,
+};
+
+/**
+ * @brief - decides about the type of the packet.
+ *  which pipeline should be exeuted
+ *
+ * @param pinfo
+ *
+ * @return 
+ */
+enum gw_classification gw_classifiy_pkt(struct gw_pkt_info *pinfo);
+
 #endif

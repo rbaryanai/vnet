@@ -7,11 +7,29 @@
 
 DOCA_LOG_MODULE(doca_gw)
 
+struct doca_fwd_tbl {
+    const char * name;
+    void * handler;
+    uint32_t id;
+    struct doca_fwd_table_cfg cfg;
+};
+
+
 struct doca_gw_pipeline {
     void * handler;
     uint32_t id;
 };
 
+struct doca_gw_port
+{
+    uint32_t port_id;
+    uint8_t  user_data[0];
+};
+
+uint8_t *doca_gw_port_priv_data(struct doca_gw_port *p)
+{
+    return &p->user_data[0];
+}
 
 
 int doca_gw_init(struct doca_gw_cfg *cfg,struct doca_gw_error *err)
@@ -32,10 +50,12 @@ int doca_gw_init(struct doca_gw_cfg *cfg,struct doca_gw_error *err)
  *
  * @return 
  */
-int doca_gw_add_entry(struct doca_gw_pipeline *pipeline, struct doca_gw_match *match, 
-                      struct doca_gw_modify *mod,uint32_t fwd_tbl)
+int doca_gw_add_entry(struct doca_gw_pipeline *pipeline, struct doca_gw_match *match,
+                      struct doca_gw_actions *actions,struct doca_gw_monitor *mon,
+                      uint32_t fwd_tbl)
 {
-    printf("port id=%p, match =%pi mod %p, fwd %d\n", pipeline, match, mod, fwd_tbl);
+    DOCA_LOG_INFO("port id=%p, match =%pi mod %p, fwd %d", pipeline, match, actions, fwd_tbl);
+    *mon = *mon;
     return 0;
 }
 
@@ -48,28 +68,32 @@ int doca_gw_add_entry(struct doca_gw_pipeline *pipeline, struct doca_gw_match *m
  *
  * @return 
  */
-int doca_gw_port_start(struct doca_gw_port_cfg *cfg, struct doca_gw_port *port, struct doca_gw_error *err)
+struct doca_gw_port * doca_gw_port_start(struct doca_gw_port_cfg *cfg, struct doca_gw_error *err)
 {
+    struct doca_gw_port *port = (struct doca_gw_port *) malloc(sizeof(struct doca_gw_port)+cfg->priv_data_size);
+
     if ( port == NULL ) {
-        return -1;
+        return NULL;
     }
+    memset(port, 0, sizeof(struct doca_gw_port));
 
     if ( cfg != NULL ){
         switch(cfg->type) {
             case DOCA_GW_PORT_DPDK:
-                printf("port is dpdk, matching port id\n");
+                DOCA_LOG_INFO("port is dpdk, matching port id");
                 // init all required data sturcures for port.
                 break;
             case DOCA_GW_PORT_DPDK_BY_ID:
-                printf("port is dpdk, matching port id:%s\n", cfg->devargs);
+                DOCA_LOG_INFO("new doca port type:dpdk port id:%s", cfg->devargs);
                 break;
             default:
-                printf("unsupported port type\n");
-                err->message = "unsupported port type\n";
-                return -1;
+                DOCA_LOG_ERR("unsupported port type");
+                err->message = "unsupported port type";
+                free(port);
+                port = NULL;
         }
     }
-    return 0;
+    return port;
 }
 
 /**
@@ -105,16 +129,13 @@ struct doca_gw_pipeline *doca_gw_create_pipe(struct doca_gw_pipeline_cfg *cfg)
     return pl;
 }
 
-
-
-int doca_gw_add_fwd(struct doca_fwd_table_cfg *cfg, struct doca_fwd_tbl *fwd)
+struct doca_fwd_tbl *doca_gw_create_fwd_tbl(struct doca_fwd_table_cfg *cfg)
 {
     static uint32_t fwd_id = 0;
-
-    if(cfg != NULL && fwd != NULL) {
-        fwd->id = fwd_id++;
-        printf("added SW FWD table %d\n",fwd->id);
-        return 0;
-    }
-    return -1;
+    struct doca_fwd_tbl *tbl = malloc(sizeof(struct doca_fwd_tbl));
+    memset(tbl, 0, sizeof(struct doca_fwd_tbl));
+    tbl->cfg = *cfg;
+    tbl->id = fwd_id++;
+    DOCA_LOG_INFO("add fwd tbl");
+    return tbl;
 }
