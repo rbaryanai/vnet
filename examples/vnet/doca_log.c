@@ -31,6 +31,14 @@ void doca_log(struct doca_log_module *module, enum doca_log_level level, const c
 }
 
 
+/**
+ * @brief - configure logger:
+ *   can be syslog file
+ *   can be anyother we chose to support
+ *
+ * @param type
+ * @param cfg
+ */
 void doca_log_cfg(enum doca_log_type type, const char *cfg)
 {
     //TODO: real support

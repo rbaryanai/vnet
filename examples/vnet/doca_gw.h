@@ -7,6 +7,7 @@
 
 struct doca_gw_port;
 struct doca_gw_pipeline; 
+struct doca_gw_pipelne_entry;
 
 /**
  * @brief - on doca api failure one of 
@@ -47,8 +48,6 @@ struct doca_gw_port_cfg {
     const char *devargs;
     uint16_t priv_data_size;  // user private data
 };
-
-
 
 struct doca_gw_match {
 
@@ -118,12 +117,10 @@ struct doca_gw_pipeline_cfg {
     bool                    count; // count for entire pipe
 };
 
-
 enum doca_fwd_tbl_type {
     DOCA_FWD_RSS,
     DOCA_FWD_FIB_TBL
 };
-
 
 struct doca_fwd_table_cfg {
     enum doca_fwd_tbl_type type;
@@ -204,9 +201,10 @@ uint8_t *doca_gw_port_priv_data(struct doca_gw_port *p);
  */
 struct doca_gw_pipeline *doca_gw_create_pipe(struct doca_gw_pipeline_cfg *cfg);
 
-int doca_gw_add_entry(struct doca_gw_pipeline *pipeline, struct doca_gw_match *match,
+struct doca_gw_pipelne_entry *doca_gw_pipeline_add_entry(uint16_t pipe_queue, 
+                      struct doca_gw_pipeline *pipeline, struct doca_gw_match *match,
                       struct doca_gw_actions *actions,struct doca_gw_monitor *mon,
-                      uint32_t fwd_tbl);
+                      struct doca_fwd_tbl *fwd, struct doca_gw_error *err);
 
 /**
  * @brief 
@@ -215,6 +213,6 @@ int doca_gw_add_entry(struct doca_gw_pipeline *pipeline, struct doca_gw_match *m
  *
  * @return 
  */
-int doca_gw_rm_entry(void * session);
+int doca_gw_rm_entry(uint16_t pipe_queue, struct doca_gw_pipelne_entry *entry);
 
 #endif

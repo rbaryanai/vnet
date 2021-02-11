@@ -26,7 +26,6 @@ DOCA_LOG_MODULE(GW)
 #define GW_MAC_EXPAND(b) b[0],b[1],b[2],b[3],b[4],b[5]
 #define GW_IPV4_STR_FMT "%d:%d:%d:%d"
 #define GW_IPV4_EXPAND(b) b[0],b[1],b[2],b[3]
-
 #define GW_MAX_PORT_ID  (2)
 
 struct doca_fwd_tbl *sw_rss_fwd_tbl_port[GW_MAX_PORT_ID];
@@ -49,8 +48,6 @@ struct doca_fwd_tbl *gw_build_rss_fwd(int n_queues)
     cfg.rss.num_queues = n_queues;
     return doca_gw_create_fwd_tbl(&cfg);
 }
-
-
 
 static void gw_build_underlay_overlay_match(struct doca_gw_match *match)
 {
@@ -111,7 +108,7 @@ static struct doca_gw_pipeline *gw_build_underlay_overlay(struct doca_gw_port *p
 }
 
 static 
-int gw_parse_pkt_format(uint8_t *data, int len, bool l2, struct gw_pkt_format *fmt)
+int gw_parse_pkt_format(uint8_t *data, int len, bool l2, struct app_pkt_format *fmt)
 {
     // parse outer
     struct rte_ether_hdr *eth = NULL;
@@ -133,8 +130,12 @@ int gw_parse_pkt_format(uint8_t *data, int len, bool l2, struct gw_pkt_format *f
                 l3_off = sizeof(struct rte_ether_hdr);        
                 fmt->l3_type = 6; //const
                 return -1;
+            case RTE_ETHER_TYPE_ARP:
+                //TODO: arps might need special handling
+                return -1; 
             default:
-                fprintf(stderr, "unsupported type %x\n",eth->ether_type);
+                //TODO: should be rate limited
+                DOCA_LOG_WARN("unsupported type %x\n",eth->ether_type);
                 return -1;
         }
     }
@@ -143,12 +144,11 @@ int gw_parse_pkt_format(uint8_t *data, int len, bool l2, struct gw_pkt_format *f
     if(iphdr->src_addr == 0 || iphdr->dst_addr == 0) {
         return -1;
     }
+
     fmt->l3 = (data + l3_off);
-    fmt->l3_type = 4; //const
+    fmt->l3_type = GW_IPV4; 
 
-
-
-    l4_off = l3_off + 20; // should be taken from iphdr
+    l4_off = l3_off +  rte_ipv4_hdr_len(iphdr); 
     fmt->l4 = data + l4_off;
     
     switch(iphdr->next_proto_id){
@@ -169,20 +169,24 @@ int gw_parse_pkt_format(uint8_t *data, int len, bool l2, struct gw_pkt_format *f
 
                 fmt->l4_type = IPPROTO_UDP;
                 GW_VARIFY_LEN(len, l7_off);
+                fmt->l7 = (data + l7_off);
             }
             break;
         case IPPROTO_GRE:
             fmt->l4_type = IPPROTO_GRE;
             break;
+        case IPPROTO_ICMP:
+                fmt->l4_type = IPPROTO_ICMP;
+                break;
         default:
-            printf("unsupported l4 %d\n",iphdr->next_proto_id);
+            DOCA_LOG_INFO("unsupported l4 %d\n",iphdr->next_proto_id);
             return -1;
     }
 
     return 0;
 }
 
-static int gw_parse_is_tun(struct gw_pkt_info *pinfo)
+static int gw_parse_is_tun(struct app_pkt_info *pinfo)
 {
     //TODO: support ipv6
     if (pinfo->outer.l3_type != GW_IPV4) {
@@ -194,11 +198,12 @@ static int gw_parse_is_tun(struct gw_pkt_info *pinfo)
         struct rte_gre_hdr *gre_hdr = (struct rte_gre_hdr *) pinfo->outer.l4;
         // need to now how to parse
         if (gre_hdr->k) {
-                return -1;
+                return 0;
         }
-        pinfo->tun_type = GW_TUN_GRE;
+        pinfo->tun_type = APP_TUN_GRE;
         return sizeof(struct rte_gre_hdr);
    }
+
 
    if ( pinfo->outer.l4_type == IPPROTO_UDP ) {
         struct rte_udp_hdr *udphdr = (struct rte_udp_hdr *) pinfo->outer.l4;
@@ -209,7 +214,7 @@ static int gw_parse_is_tun(struct gw_pkt_info *pinfo)
                     struct rte_vxlan_gpe_hdr *vxlanhdr = (struct rte_vxlan_gpe_hdr *) (pinfo->outer.l4 + sizeof(struct rte_udp_hdr));
                     if (vxlanhdr->vx_flags & 0x08) {
                         //TODO: need to check if this gpe
-                        pinfo->tun_type = GW_TUN_VXLAN;
+                        pinfo->tun_type = APP_TUN_VXLAN;
                         pinfo->tun.vni  = vxlanhdr->vx_vni;
                         pinfo->tun.l2   = true;
                     }
@@ -235,7 +240,7 @@ static int gw_parse_is_tun(struct gw_pkt_info *pinfo)
  *
  * @return 0 on success and error otherwise.
  */
-int gw_parse_packet(uint8_t *data, int len, struct gw_pkt_info *pinfo)
+int gw_parse_packet(uint8_t *data, int len, struct app_pkt_info *pinfo)
 {
     int off = 0;
     int inner_off = 0;
@@ -254,20 +259,19 @@ int gw_parse_packet(uint8_t *data, int len, struct gw_pkt_info *pinfo)
 
     off = gw_parse_is_tun(pinfo);
     // no tunnel parsing is done
-    if (pinfo->tun_type == GW_TUN_NONE) {
+    if (pinfo->tun_type == APP_TUN_NONE) {
         return 0;
     }
 
-
     switch(pinfo->tun_type){
-        case GW_TUN_GRE:
+        case APP_TUN_GRE:
             inner_off = (pinfo->outer.l4 - data) + off;
-            if (!gw_parse_pkt_format(data + inner_off , len - inner_off, false, &pinfo->inner)) 
+            if (gw_parse_pkt_format(data + inner_off , len - inner_off, false, &pinfo->inner)) 
                 return -1;
             break;
-        case GW_TUN_VXLAN:
+        case APP_TUN_VXLAN:
             inner_off = (pinfo->outer.l4 - data) + off;
-            if (!gw_parse_pkt_format(data + inner_off , len - inner_off, pinfo->tun.l2, &pinfo->inner)) 
+            if (gw_parse_pkt_format(data + inner_off , len - inner_off, pinfo->tun.l2, &pinfo->inner)) 
                 return -1;
             break;
 
@@ -298,7 +302,7 @@ static int gw_print_ipv4(uint8_t *data,char *str, int len)
     return off;
 }
 
-int gw_parse_pkt_str(struct gw_pkt_info *pinfo, char *str, int len)
+int gw_parse_pkt_str(struct app_pkt_info *pinfo, char *str, int len)
 {
     int off = 0;
     if(!pinfo)
@@ -312,7 +316,7 @@ int gw_parse_pkt_str(struct gw_pkt_info *pinfo, char *str, int len)
     off+=gw_print_ipv4(pinfo->outer.l3, str + off, len - off);
 
     switch(pinfo->tun_type){
-        case GW_TUN_VXLAN:
+        case APP_TUN_VXLAN:
             off+=snprintf(str+off,len-off,"TUNNEL:VXLAN\n");
             break;
         default:
@@ -336,11 +340,16 @@ int gw_parse_pkt_str(struct gw_pkt_info *pinfo, char *str, int len)
  *
  * @return 
  */
-enum gw_classification gw_classifiy_pkt(struct gw_pkt_info *pinfo)
+enum gw_classification gw_classifiy_pkt(struct app_pkt_info *pinfo)
 {
     struct rte_ipv4_hdr *ipv4hdr;
-    if (pinfo->tun_type != GW_TUN_VXLAN) {
-        DOCA_LOG_INFO("no tun");
+    if (pinfo->tun_type != APP_TUN_VXLAN) {
+        switch(pinfo->outer.l4_type) {
+            case IPPROTO_TCP:
+            case IPPROTO_UDP:
+            case IPPROTO_ICMP:
+                return GW_BYPASS_L4;
+        }
         return GW_BYPASS;
     }
 
@@ -400,5 +409,44 @@ struct doca_gw_port *gw_init_doca_port(struct gw_port_cfg *port_cfg)
     sw_rss_fwd_tbl_port[port_cfg->port_id] = gw_build_rss_fwd(port_cfg->n_queues);
 
     return port;
+}
+
+struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct app_pkt_info *pinfo,
+                                                             struct doca_gw_pipeline *pipeline)
+{
+    struct doca_gw_match match = {0};
+    struct doca_gw_actions actions = {0};
+    struct doca_gw_monitor monitor = {0};
+    struct doca_gw_error err = {0};
+
+    if (pinfo->outer.l3_type != GW_IPV4) {
+        DOCA_LOG_WARN("IPv6 not supported");
+        return NULL;
+    }
+
+    /* exact match on dst ip and vni */
+    match.out_dst_ip.a.ipv4_addr = app_pinfo_outer_ipv4_dst(pinfo);
+    match.tun.tun_id = pinfo->tun.vni;
+
+    /* exact inner 5-tuple */
+    match.in_dst_ip.a.ipv4_addr = app_pinfo_inner_ipv4_dst(pinfo);
+    match.in_src_ip.a.ipv4_addr = app_pinfo_inner_ipv4_src(pinfo);
+    match.in_proto_type = pinfo->inner.l4_type;
+    match.in_src_port = app_pinfo_inner_src_port(pinfo);
+    match.in_dst_port = app_pinfo_inner_dst_port(pinfo);
+
+    actions.mod_dst_ip.a.ipv4_addr = (app_pinfo_inner_ipv4_dst(pinfo) & rte_cpu_to_be_32(0x00ffffff))
+                                    | rte_cpu_to_be_32(0x25000000); // change dst ip
+
+
+    //TODO: add context
+    return doca_gw_pipeline_add_entry(0, pipeline, &match, &actions, &monitor,
+                                      sw_rss_fwd_tbl_port[pinfo->orig_port_id], &err);
+}
+
+
+void gw_pipeline_entry(struct doca_gw_pipelne_entry *entry)
+{
+   doca_gw_rm_entry(0,entry);
 }
 

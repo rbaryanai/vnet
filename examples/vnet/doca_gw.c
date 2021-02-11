@@ -43,6 +43,10 @@ int doca_gw_init(struct doca_gw_cfg *cfg,struct doca_gw_error *err)
 }
 
 
+struct doca_gw_pipelne_entry {
+    int id;
+};
+
 /**
  * @brief 
  *
@@ -50,12 +54,28 @@ int doca_gw_init(struct doca_gw_cfg *cfg,struct doca_gw_error *err)
  *
  * @return 
  */
-int doca_gw_add_entry(struct doca_gw_pipeline *pipeline, struct doca_gw_match *match,
+struct doca_gw_pipelne_entry *doca_gw_pipeline_add_entry(uint16_t pipe_queue, 
+                      struct doca_gw_pipeline *pipeline, struct doca_gw_match *match,
                       struct doca_gw_actions *actions,struct doca_gw_monitor *mon,
-                      uint32_t fwd_tbl)
+                      struct doca_fwd_tbl *fwd, struct doca_gw_error *err)
 {
-    DOCA_LOG_INFO("port id=%p, match =%pi mod %p, fwd %d", pipeline, match, actions, fwd_tbl);
+    static int  pipe_entry_id = 0;
+    struct doca_gw_pipelne_entry *entry;
     *mon = *mon;
+    *err = *err;
+    entry = (struct doca_gw_pipelne_entry *) malloc(sizeof(struct doca_gw_pipelne_entry));
+    memset(entry,0,sizeof(struct doca_gw_pipelne_entry));
+    entry->id = pipe_entry_id++;
+    DOCA_LOG_INFO("offload[%d]: queue = %d port id=%p, match =%pi mod %p, fwd %d", entry->id, 
+                  pipe_queue, pipeline, match, actions, fwd->id);
+    return entry;
+}
+
+
+int doca_gw_rm_entry(uint16_t pipe_queue, struct doca_gw_pipelne_entry *entry)
+{
+    DOCA_LOG_INFO("(pipe %d) HW release id%d",pipe_queue, entry->id);
+    free(entry);
     return 0;
 }
 

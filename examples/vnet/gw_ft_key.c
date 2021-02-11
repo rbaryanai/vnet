@@ -6,58 +6,46 @@
 #include "rte_tcp.h"
 #include "rte_udp.h"
 
-int gw_ft_key_fill(struct gw_pkt_info *pinfo, struct gw_ft_key *key)
+#define gw_ft_key_get_ipv4_src(inner,pinfo) inner?app_pinfo_inner_ipv4_src(pinfo): \
+                                            app_pinfo_outer_ipv4_src(pinfo);
+
+#define gw_ft_key_get_ipv4_dst(inner,pinfo) inner?app_pinfo_inner_ipv4_dst(pinfo): \
+                                            app_pinfo_outer_ipv4_dst(pinfo);
+
+#define gw_ft_key_get_src_port(inner,pinfo) inner?app_pinfo_inner_src_port(pinfo): \
+                                            app_pinfo_outer_src_port(pinfo);
+
+#define gw_ft_key_get_dst_port(inner,pinfo) inner?app_pinfo_inner_dst_port(pinfo): \
+                                            app_pinfo_outer_dst_port(pinfo);
+
+int gw_ft_key_fill(struct app_pkt_info *pinfo, struct gw_ft_key *key)
 {
-    struct gw_pkt_format *pktf = NULL;
-    struct rte_ipv4_hdr * iphdr;
+    bool inner = false;
 
-    if ( pinfo->tun_type == GW_TUN_NONE ) {
-        pktf = &pinfo->outer;
-    } else {
-        pktf = &pinfo->inner;
-    }
+    if ( pinfo->tun_type != APP_TUN_NONE )
+        inner = true; 
 
-    if (pktf->l3_type != GW_IPV4) {
+    //TODO: support ipv6
+    if ( pinfo->outer.l3_type != GW_IPV4) {
         return -1;
     }
 
-    iphdr = (struct rte_ipv4_hdr *) pktf->l3;
-    key->protocol = iphdr->next_proto_id;
-    key->ipv4_1 = iphdr->src_addr;
-    key->ipv4_2 = iphdr->dst_addr;
-    
-    switch(pktf->l4_type){
-        case IPPROTO_TCP:
-            {
-                struct rte_tcp_hdr * tcphdr = (struct rte_tcp_hdr *) pktf->l4;
-                key->port_1 = tcphdr->src_port;
-                key->port_2 = tcphdr->dst_port;
-            }
-            break;
-        case IPPROTO_UDP:
-            {
-                struct rte_udp_hdr * udphdr = (struct rte_udp_hdr *) pktf->l4;
-                key->port_1 = udphdr->src_port;
-                key->port_2 = udphdr->dst_port;
-            }
-            break;
-        default:
-            printf("unsupported l4 %d\n",key->protocol);
-            return -1;
-    }
+    /* 5-tuple of inner if there is tunnel or outer if none */
+    key->protocol = inner?pinfo->inner.l4_type:pinfo->outer.l4_type;
+    key->ipv4_1 = gw_ft_key_get_ipv4_src(inner,pinfo);
+    key->ipv4_2 = gw_ft_key_get_ipv4_dst(inner,pinfo);
+    key->port_1 = gw_ft_key_get_src_port(inner,pinfo);
+    key->port_2 = gw_ft_key_get_dst_port(inner,pinfo);
 
-    if ( pinfo->tun_type != GW_TUN_NONE ) {
+    /* in case of tunnel , use tun tyoe and vni */
+    if ( pinfo->tun_type != APP_TUN_NONE ) {
         key->tun_type = pinfo->tun_type;
         key->vni = pinfo->tun.vni;
     }    
-
     return 0;
 }
-
-
 
 bool gw_ft_key_equal(struct gw_ft_key *key1, struct gw_ft_key *key2)
 {
     return memcmp(key1, key2, sizeof(struct gw_ft_key)) == 0;
 }
-

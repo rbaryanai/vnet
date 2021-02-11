@@ -6,7 +6,8 @@
 #include <stdbool.h>
 #include <sys/types.h>
 
-struct gw_pkt_info;
+
+struct app_pkt_info;
 
 struct gw_ft_key {
     uint32_t ipv4_1;
@@ -20,7 +21,7 @@ struct gw_ft_key {
     uint32_t vni;
 };
 
-int gw_ft_key_fill(struct gw_pkt_info *m, struct gw_ft_key *key);
+int gw_ft_key_fill(struct app_pkt_info *m, struct gw_ft_key *key);
 
 
 /**

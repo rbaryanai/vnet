@@ -13,6 +13,9 @@
 
 DOCA_LOG_MODULE(flow_table)
 
+static int _gw_ft_destory_flow(struct gw_ft *ft, struct gw_ft_key *key);
+
+
 struct gw_ft_entry {
     LIST_ENTRY(gw_ft_entry) next; /* entry pointers in the list. */
     struct gw_ft_key key;
@@ -51,8 +54,8 @@ struct gw_ft {
     struct gw_ft_stats stats;
     volatile int stop_aging_thread;
     uint32_t fid_ctr;
-    rte_spinlock_t lock;
 
+    void (*gw_aging_cb)(struct gw_ft_user_ctx *ctx);
     struct gw_ft_bucket buckets[0];
 };
 
@@ -64,7 +67,7 @@ static void * gw_ft_aging_main(void *void_ptr)
     struct gw_ft_entry_head *first;
     struct gw_ft_entry *node;
     if (!ft){
-        //DOCA_LOG_ERR("no ft, abort aging\n");
+        DOCA_LOG_CRIT("no ft, abort aging\n");
         return NULL;
     }
 
@@ -72,22 +75,28 @@ static void * gw_ft_aging_main(void *void_ptr)
         uint64_t t = rte_rdtsc();
 
         DOCA_LOG_INFO("total entries: %d", (int) (ft->stats.add - ft->stats.rm));
+        DOCA_LOG_INFO("total adds   : %d", (int) (ft->stats.add));
 
-        if( rte_spinlock_trylock(&ft->lock) ) {
-            for(i = 0 ; i < ft->cfg.size ; i++){
-                first = &ft->buckets[i].head;
-                LIST_FOREACH(node, first, next) {
-                    if(node->hw_off) {
-                        /* TODO: support in HW */
+        for(i = 0 ; i < ft->cfg.size ; i++){
+            bool still_aging = false;
+            do {
+                still_aging = false;
+                if (rte_spinlock_trylock(&ft->buckets[i].lock)){
+                    first = &ft->buckets[i].head;
+                    LIST_FOREACH(node, first, next) {
+                        if(node->hw_off) {
+                            /* TODO: support in HW */
+                        }
+                        if(node->expiration < t){
+                            DOCA_LOG_DBG("removing flow");
+                            _gw_ft_destory_flow(ft, &node->key);
+                            still_aging = true;
+                            break;
+                        }
                     }
-                    if(node->expiration < t){
-                        DOCA_LOG_INFO("removing flow");
-                        gw_ft_destory_flow(ft, &node->key);
-                        break;
-                    }
+                    rte_spinlock_unlock(&ft->buckets[i].lock);
                 }
-            }
-            rte_spinlock_unlock(&ft->lock);
+            } while(still_aging);
         }
         sleep(1);
     }
@@ -126,13 +135,14 @@ static uint32_t gw_ft_key_hash(struct gw_ft_key *key)
     return hash;
 }
 
-struct gw_ft *gw_ft_create(int size, uint32_t user_data_size)
+struct gw_ft *gw_ft_create(int size, uint32_t user_data_size, void (*gw_aging_cb)(struct gw_ft_user_ctx *ctx))
 {
     struct gw_ft *ft;
     uint32_t act_size;
     uint32_t alloc_size;
+    uint32_t i;
 
-    if (!size)
+    if (size <= 0)
             return NULL;
     /* Align to the next power of 2, 32bits integer is enough now. */
     if (!rte_is_power_of_2(size)) {
@@ -155,10 +165,13 @@ struct gw_ft *gw_ft_create(int size, uint32_t user_data_size)
     ft->cfg.user_data_size = user_data_size;
     ft->cfg.size = act_size;
     ft->cfg.mask = act_size - 1;
+    ft->gw_aging_cb = gw_aging_cb;
         
     DOCA_LOG_DBG("FT create size=%d, user_data_size=%d",size, user_data_size);
 
-    rte_spinlock_init(&ft->lock);
+    for( i = 0 ; i < ft->cfg.size ; i++){
+        rte_spinlock_init(&ft->buckets[i].lock);
+    }
     gw_ft_aging_thread_start(ft);
     return ft;
 }
@@ -186,7 +199,7 @@ struct gw_ft_entry *_gw_ft_find(struct gw_ft *ft, struct gw_ft_key *key)
     return NULL;
 }
 
-bool gw_ft_find(struct gw_ft *ft, struct gw_pkt_info *pinfo, 
+bool gw_ft_find(struct gw_ft *ft, struct app_pkt_info *pinfo, 
                                  struct gw_ft_user_ctx **ctx)
 {
     struct gw_ft_entry *fe;
@@ -202,7 +215,7 @@ bool gw_ft_find(struct gw_ft *ft, struct gw_pkt_info *pinfo,
     return true; 
 }
 
-bool gw_ft_add_new(struct gw_ft *ft, struct gw_pkt_info *pinfo,struct gw_ft_user_ctx **ctx)
+bool gw_ft_add_new(struct gw_ft *ft, struct app_pkt_info *pinfo,struct gw_ft_user_ctx **ctx)
 {
     uint32_t hash;
     int idx;
@@ -230,6 +243,7 @@ bool gw_ft_add_new(struct gw_ft *ft, struct gw_pkt_info *pinfo,struct gw_ft_user
     memset(new_e,0,ft->cfg.entry_size);
     new_e->expiration = t + sec*10;
     new_e->user_ctx.fid = ft->fid_ctr++;
+    *ctx = &new_e->user_ctx;
 
     DOCA_LOG_DBG("defined new flow %llu", (unsigned int long long)new_e->user_ctx.fid);
     memcpy(&new_e->key, &key, sizeof(struct gw_ft_key));
@@ -237,17 +251,17 @@ bool gw_ft_add_new(struct gw_ft *ft, struct gw_pkt_info *pinfo,struct gw_ft_user
     idx = hash & ft->cfg.mask;
     first = &ft->buckets[idx].head;
 
-    rte_spinlock_lock(&ft->lock);
+    rte_spinlock_lock(&ft->buckets[idx].lock);
     LIST_INSERT_HEAD(first, new_e, next);
-    DOCA_LOG_DBG("added on index %d",idx);
-    *ctx = &new_e->user_ctx;
+    rte_spinlock_unlock(&ft->buckets[idx].lock);
     ft->stats.add++;
-    rte_spinlock_unlock(&ft->lock);
+    DOCA_LOG_DBG("added on index %d",idx);
     return true;
 }
 
-int
-gw_ft_destory_flow(struct gw_ft *ft, struct gw_ft_key *key)
+
+static 
+int _gw_ft_destory_flow(struct gw_ft *ft, struct gw_ft_key *key)
 {
     struct gw_ft_entry *f;
     if(!key || !ft){
@@ -258,9 +272,18 @@ gw_ft_destory_flow(struct gw_ft *ft, struct gw_ft_key *key)
 
     if(f){
 	LIST_REMOVE(f, next);
+        ft->gw_aging_cb(&f->user_ctx);
         free(f);
         ft->stats.rm++;
     }
+    return 0;
+}
+
+
+int
+gw_ft_destory_flow(struct gw_ft *ft, struct gw_ft_key *key)
+{
+    _gw_ft_destory_flow(ft,key);
     return 0;
 }
 
@@ -272,7 +295,6 @@ void gw_ft_destroy(struct gw_ft *ft)
     struct gw_ft_entry *node;
 
     ft->stop_aging_thread = true;
-    rte_spinlock_lock(&ft->lock);
     for (i = 0 ; i < ft->cfg.size ; i++) {
         do {
             first = &ft->buckets[i].head;
@@ -283,6 +305,5 @@ void gw_ft_destroy(struct gw_ft *ft)
             }
         } while (0);
     }
-    rte_spinlock_unlock(&ft->lock);
     free(ft);
 }
