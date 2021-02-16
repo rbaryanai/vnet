@@ -11,6 +11,10 @@ struct gw_port_cfg {
     uint16_t port_id;
 };
 
+
+
+int gw_init(void);
+
 int gw_parse_packet(uint8_t *data, int len, struct app_pkt_info *pinfo);
 
 
@@ -47,6 +51,28 @@ int gw_parse_pkt_str(struct app_pkt_info *pinfo, char *str, int len);
  */
 struct doca_gw_pipeline *gw_init_ol_to_ul_pipeline(struct doca_gw_port *p);
 
+/**
+ * @brief - overlay to overlay pipeline
+ *
+ *  match on:
+ *            outer dst_ip/vni
+ *            inner 5-tuple
+ *        
+ *  modify:
+ *            decap
+ *            inner-dst ip
+ *            encap
+ *
+ *            count
+ *            meter
+ *
+ *  fwd:      port
+ *
+ *
+ * @return 
+ */
+struct doca_gw_pipeline *gw_init_ol_to_ol_pipeline(struct doca_gw_port *p);
+
 
 
 /**
@@ -75,8 +101,27 @@ enum gw_classification {
  */
 enum gw_classification gw_classifiy_pkt(struct app_pkt_info *pinfo);
 
+/**
+ * @brief - configure entry in the overlay to underlay pipeline
+ *
+ * @param pinfo
+ * @param pipeline
+ *
+ * @return handle
+ */
 struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct app_pkt_info *pinfo, struct doca_gw_pipeline *pipeline);
 
-void gw_pipeline_entry(struct doca_gw_pipelne_entry *entry);
+/**
+ * @brief 
+ *
+ * @param pinfo
+ * @param pipeline
+ *
+ * @return 
+ */
+struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ol_entry(struct app_pkt_info *pinfo, struct doca_gw_pipeline *pipeline);
+
+
+void gw_rm_pipeline_entry(struct doca_gw_pipelne_entry *entry);
 
 #endif

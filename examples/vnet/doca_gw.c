@@ -34,7 +34,7 @@ uint8_t *doca_gw_port_priv_data(struct doca_gw_port *p)
 
 int doca_gw_init(struct doca_gw_cfg *cfg,struct doca_gw_error *err)
 {
-    DOCA_LOG_ERR("total sessions = %d\n",cfg->total_sessions);
+    DOCA_LOG_INFO("total sessions = %d\n",cfg->total_sessions);
     printf("total sessions = %d\n",cfg->total_sessions);
     if (err) {
         *err = *err;

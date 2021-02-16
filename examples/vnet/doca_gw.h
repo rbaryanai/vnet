@@ -71,6 +71,7 @@ struct doca_gw_match {
 
 struct doca_gw_encap_action {
   
+    uint8_t flags;
     //TODO: do we need here an array?  
     uint8_t src_mac[DOCA_ETHER_ADDR_LEN];
     uint8_t dst_mac[DOCA_ETHER_ADDR_LEN];
@@ -119,7 +120,7 @@ struct doca_gw_pipeline_cfg {
 
 enum doca_fwd_tbl_type {
     DOCA_FWD_RSS,
-    DOCA_FWD_FIB_TBL
+    DOCA_FWD_PORT
 };
 
 struct doca_fwd_table_cfg {
@@ -131,9 +132,9 @@ struct doca_fwd_table_cfg {
             int      num_queues;
         } rss;
 
-        struct fib_tbl {
-            int size;
-        } f;
+        struct port {
+            int id;
+        } port;
     };
 };
 

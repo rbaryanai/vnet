@@ -92,7 +92,7 @@ void gw_aged_flow_cb(struct gw_ft_user_ctx *ctx)
 {
     struct gw_entry *entry = (struct gw_entry *) &ctx->data[0];
     if (entry->is_hw) {
-        gw_pipeline_entry(entry->hw_entry);
+        gw_rm_pipeline_entry(entry->hw_entry);
     }
 }
 
@@ -122,6 +122,14 @@ int gw_handle_new_flow(struct app_pkt_info *pinfo, struct gw_ft_user_ctx **ctx)
                 DOCA_LOG_DBG("failed create new entry");
                 return -1;
             }
+            entry = (struct gw_entry *) &(*ctx)->data[0];
+            entry->hw_entry = gw_pipeline_add_ol_to_ol_entry(pinfo,gw_ins->p1_over_under[pinfo->orig_port_id]);
+            if (entry->hw_entry == NULL) {
+                DOCA_LOG_DBG("failed to offload");
+                return -1;
+            }
+            entry->is_hw = true;
+
             // add flow to pipeline
             break;
         case GW_BYPASS_L4:
@@ -287,6 +295,8 @@ static int init_gw(void)
     if (init_doca()){
         goto fail_init;
     }
+
+    gw_init();
     return 0;
 fail_init:
     if (gw_ins->ft != NULL)

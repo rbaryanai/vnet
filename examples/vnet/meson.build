@@ -7,4 +7,6 @@ sources = files('main.c', 'doca_gw.h', 'doca_gw.c'
     , 'doca_log.h' , 'doca_log.c'
     , 'gw_port.h' , 'gw_port.c'
     , 'app_pkt.h' , 'app_pkt.c'
+    , 'doca_kpi.h' ,'doca_kpi.c'
+    , 'doca_fib.h' ,'doca_fib.c'
 )

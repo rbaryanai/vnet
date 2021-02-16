@@ -10,6 +10,7 @@
 #include "rte_spinlock.h"
 
 #include "doca_log.h"
+#include "doca_kpi.h"
 
 DOCA_LOG_MODULE(flow_table)
 
@@ -55,6 +56,8 @@ struct gw_ft {
     volatile int stop_aging_thread;
     uint32_t fid_ctr;
 
+    struct doca_gauge *cps_gauge;
+
     void (*gw_aging_cb)(struct gw_ft_user_ctx *ctx);
     struct gw_ft_bucket buckets[0];
 };
@@ -76,6 +79,7 @@ static void * gw_ft_aging_main(void *void_ptr)
 
         DOCA_LOG_INFO("total entries: %d", (int) (ft->stats.add - ft->stats.rm));
         DOCA_LOG_INFO("total adds   : %d", (int) (ft->stats.add));
+        DOCA_LOG_INFO("cps: %d",doca_gauge_get_sum(ft->cps_gauge));
 
         for(i = 0 ; i < ft->cfg.size ; i++){
             bool still_aging = false;
@@ -137,6 +141,7 @@ static uint32_t gw_ft_key_hash(struct gw_ft_key *key)
 
 struct gw_ft *gw_ft_create(int size, uint32_t user_data_size, void (*gw_aging_cb)(struct gw_ft_user_ctx *ctx))
 {
+    struct doca_gauge_cfg gauge_cfg = {20,1000};
     struct gw_ft *ft;
     uint32_t act_size;
     uint32_t alloc_size;
@@ -166,6 +171,7 @@ struct gw_ft *gw_ft_create(int size, uint32_t user_data_size, void (*gw_aging_cb
     ft->cfg.size = act_size;
     ft->cfg.mask = act_size - 1;
     ft->gw_aging_cb = gw_aging_cb;
+    ft->cps_gauge = doca_gauge_init(&gauge_cfg); 
         
     DOCA_LOG_DBG("FT create size=%d, user_data_size=%d",size, user_data_size);
 
@@ -256,6 +262,8 @@ bool gw_ft_add_new(struct gw_ft *ft, struct app_pkt_info *pinfo,struct gw_ft_use
     rte_spinlock_unlock(&ft->buckets[idx].lock);
     ft->stats.add++;
     DOCA_LOG_DBG("added on index %d",idx);
+
+    doca_gauge_add_sample(ft->cps_gauge, 1);
     return true;
 }
 
