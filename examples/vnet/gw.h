@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "doca_gw.h"
-#include "app_pkt.h"
+#include "doca_pkt.h"
 
 struct gw_port_cfg {
     uint16_t n_queues;
@@ -15,7 +15,7 @@ struct gw_port_cfg {
 
 int gw_init(void);
 
-int gw_parse_packet(uint8_t *data, int len, struct app_pkt_info *pinfo);
+int gw_parse_packet(uint8_t *data, int len, struct doca_pkt_info *pinfo);
 
 
 /**
@@ -28,7 +28,7 @@ int gw_parse_packet(uint8_t *data, int len, struct app_pkt_info *pinfo);
  *
  * @return -1 on fail or str len on success
  */
-int gw_parse_pkt_str(struct app_pkt_info *pinfo, char *str, int len);
+int gw_parse_pkt_str(struct doca_pkt_info *pinfo, char *str, int len);
 
 /**
  * @brief - overlay to underlay pipeline.
@@ -99,7 +99,7 @@ enum gw_classification {
  *
  * @return 
  */
-enum gw_classification gw_classifiy_pkt(struct app_pkt_info *pinfo);
+enum gw_classification gw_classifiy_pkt(struct doca_pkt_info *pinfo);
 
 /**
  * @brief - configure entry in the overlay to underlay pipeline
@@ -109,7 +109,7 @@ enum gw_classification gw_classifiy_pkt(struct app_pkt_info *pinfo);
  *
  * @return handle
  */
-struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct app_pkt_info *pinfo, struct doca_gw_pipeline *pipeline);
+struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_info *pinfo, struct doca_gw_pipeline *pipeline);
 
 /**
  * @brief 
@@ -119,7 +119,7 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct app_pkt_info
  *
  * @return 
  */
-struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ol_entry(struct app_pkt_info *pinfo, struct doca_gw_pipeline *pipeline);
+struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ol_entry(struct doca_pkt_info *pinfo, struct doca_gw_pipeline *pipeline);
 
 
 void gw_rm_pipeline_entry(struct doca_gw_pipelne_entry *entry);

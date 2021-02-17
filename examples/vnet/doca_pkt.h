@@ -17,7 +17,7 @@ enum APP_TUN_TYPE {
     APP_TUN_GTPU,
 };
 
-struct app_pkt_format {
+struct doca_pkt_format {
 
     uint8_t * l2;
     uint8_t * l3;
@@ -30,7 +30,7 @@ struct app_pkt_format {
     uint8_t *l7;
 };
 
-struct app_pkt_tun_format {
+struct doca_pkt_tun_format {
     uint32_t  vni;
     bool      l2;
 };
@@ -40,22 +40,22 @@ struct app_pkt_tun_format {
  *  points to relevant point in packet and 
  *  classify it.
  */
-struct app_pkt_info {
+struct doca_pkt_info {
     uint16_t orig_port_id;
-    struct app_pkt_format   outer;
+    struct doca_pkt_format   outer;
     enum APP_TUN_TYPE       tun_type;
-    struct app_pkt_tun_format tun;
-    struct app_pkt_format   inner;
+    struct doca_pkt_tun_format tun;
+    struct doca_pkt_format   inner;
     int     len;
 };
 
-uint32_t app_pinfo_outer_ipv4_dst(struct app_pkt_info *pinfo);
-uint32_t app_pinfo_outer_ipv4_src(struct app_pkt_info *pinfo);
-uint32_t app_pinfo_inner_ipv4_src(struct app_pkt_info *pinfo);
-uint32_t app_pinfo_inner_ipv4_dst(struct app_pkt_info *pinfo);
+uint32_t doca_pinfo_outer_ipv4_dst(struct doca_pkt_info *pinfo);
+uint32_t doca_pinfo_outer_ipv4_src(struct doca_pkt_info *pinfo);
+uint32_t doca_pinfo_inner_ipv4_src(struct doca_pkt_info *pinfo);
+uint32_t doca_pinfo_inner_ipv4_dst(struct doca_pkt_info *pinfo);
 
-uint16_t app_pinfo_inner_src_port(struct app_pkt_info *pinfo);
-uint16_t app_pinfo_inner_dst_port(struct app_pkt_info *pinfo);
-uint16_t app_pinfo_outer_src_port(struct app_pkt_info *pinfo);
-uint16_t app_pinfo_outer_dst_port(struct app_pkt_info *pinfo);
+uint16_t doca_pinfo_inner_src_port(struct doca_pkt_info *pinfo);
+uint16_t doca_pinfo_inner_dst_port(struct doca_pkt_info *pinfo);
+uint16_t doca_pinfo_outer_src_port(struct doca_pkt_info *pinfo);
+uint16_t doca_pinfo_outer_dst_port(struct doca_pkt_info *pinfo);
 #endif

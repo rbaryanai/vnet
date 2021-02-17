@@ -184,7 +184,7 @@ static struct doca_gw_pipeline *gw_build_overlay_to_overlay(struct doca_gw_port 
 }
 
 static 
-int gw_parse_pkt_format(uint8_t *data, int len, bool l2, struct app_pkt_format *fmt)
+int gw_parse_pkt_format(uint8_t *data, int len, bool l2, struct doca_pkt_format *fmt)
 {
     // parse outer
     struct rte_ether_hdr *eth = NULL;
@@ -262,7 +262,7 @@ int gw_parse_pkt_format(uint8_t *data, int len, bool l2, struct app_pkt_format *
     return 0;
 }
 
-static int gw_parse_is_tun(struct app_pkt_info *pinfo)
+static int gw_parse_is_tun(struct doca_pkt_info *pinfo)
 {
     //TODO: support ipv6
     if (pinfo->outer.l3_type != GW_IPV4) {
@@ -315,7 +315,7 @@ static int gw_parse_is_tun(struct app_pkt_info *pinfo)
  *
  * @return 0 on success and error otherwise.
  */
-int gw_parse_packet(uint8_t *data, int len, struct app_pkt_info *pinfo)
+int gw_parse_packet(uint8_t *data, int len, struct doca_pkt_info *pinfo)
 {
     int off = 0;
     int inner_off = 0;
@@ -376,7 +376,7 @@ static int gw_print_ipv4(uint8_t *data,char *str, int len)
     return off;
 }
 
-int gw_parse_pkt_str(struct app_pkt_info *pinfo, char *str, int len)
+int gw_parse_pkt_str(struct doca_pkt_info *pinfo, char *str, int len)
 {
     int off = 0;
     if(!pinfo)
@@ -413,7 +413,7 @@ int gw_parse_pkt_str(struct app_pkt_info *pinfo, char *str, int len)
  *
  * @return 
  */
-enum gw_classification gw_classifiy_pkt(struct app_pkt_info *pinfo)
+enum gw_classification gw_classifiy_pkt(struct doca_pkt_info *pinfo)
 {
     struct rte_ipv4_hdr *ipv4hdr;
     if (pinfo->tun_type != APP_TUN_VXLAN) {
@@ -500,7 +500,7 @@ struct doca_gw_port *gw_init_doca_port(struct gw_port_cfg *port_cfg)
     return port;
 }
 
-struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct app_pkt_info *pinfo,
+struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_info *pinfo,
                                                              struct doca_gw_pipeline *pipeline)
 {
     struct doca_gw_match match = {0};
@@ -514,17 +514,17 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct app_pkt_info
     }
 
     /* exact match on dst ip and vni */
-    match.out_dst_ip.a.ipv4_addr = app_pinfo_outer_ipv4_dst(pinfo);
+    match.out_dst_ip.a.ipv4_addr = doca_pinfo_outer_ipv4_dst(pinfo);
     match.tun.vxlan.tun_id = pinfo->tun.vni;
 
     /* exact inner 5-tuple */
-    match.in_dst_ip.a.ipv4_addr = app_pinfo_inner_ipv4_dst(pinfo);
-    match.in_src_ip.a.ipv4_addr = app_pinfo_inner_ipv4_src(pinfo);
+    match.in_dst_ip.a.ipv4_addr = doca_pinfo_inner_ipv4_dst(pinfo);
+    match.in_src_ip.a.ipv4_addr = doca_pinfo_inner_ipv4_src(pinfo);
     match.in_proto_type = pinfo->inner.l4_type;
-    match.in_src_port = app_pinfo_inner_src_port(pinfo);
-    match.in_dst_port = app_pinfo_inner_dst_port(pinfo);
+    match.in_src_port = doca_pinfo_inner_src_port(pinfo);
+    match.in_dst_port = doca_pinfo_inner_dst_port(pinfo);
 
-    actions.mod_dst_ip.a.ipv4_addr = (app_pinfo_inner_ipv4_dst(pinfo) & rte_cpu_to_be_32(0x00ffffff))
+    actions.mod_dst_ip.a.ipv4_addr = (doca_pinfo_inner_ipv4_dst(pinfo) & rte_cpu_to_be_32(0x00ffffff))
                                     | rte_cpu_to_be_32(0x25000000); // change dst ip
 
 
@@ -534,7 +534,7 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct app_pkt_info
 }
 
 
-struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ol_entry(struct app_pkt_info *pinfo, struct doca_gw_pipeline *pipeline)
+struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ol_entry(struct doca_pkt_info *pinfo, struct doca_gw_pipeline *pipeline)
 {
     struct doca_gw_match match = {0};
     struct doca_gw_actions actions = {0};
@@ -547,17 +547,17 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ol_entry(struct app_pkt_info
     }
 
     /* exact match on dst ip and vni */
-    match.out_dst_ip.a.ipv4_addr = app_pinfo_outer_ipv4_dst(pinfo);
+    match.out_dst_ip.a.ipv4_addr = doca_pinfo_outer_ipv4_dst(pinfo);
     match.tun.vxlan.tun_id = pinfo->tun.vni;
 
     /* exact inner 5-tuple */
-    match.in_dst_ip.a.ipv4_addr = app_pinfo_inner_ipv4_dst(pinfo);
-    match.in_src_ip.a.ipv4_addr = app_pinfo_inner_ipv4_src(pinfo);
+    match.in_dst_ip.a.ipv4_addr = doca_pinfo_inner_ipv4_dst(pinfo);
+    match.in_src_ip.a.ipv4_addr = doca_pinfo_inner_ipv4_src(pinfo);
     match.in_proto_type = pinfo->inner.l4_type;
-    match.in_src_port = app_pinfo_inner_src_port(pinfo);
-    match.in_dst_port = app_pinfo_inner_dst_port(pinfo);
+    match.in_src_port = doca_pinfo_inner_src_port(pinfo);
+    match.in_dst_port = doca_pinfo_inner_dst_port(pinfo);
 
-    actions.mod_dst_ip.a.ipv4_addr = (app_pinfo_inner_ipv4_dst(pinfo) & rte_cpu_to_be_32(0x00ffffff))
+    actions.mod_dst_ip.a.ipv4_addr = (doca_pinfo_inner_ipv4_dst(pinfo) & rte_cpu_to_be_32(0x00ffffff))
                                     | rte_cpu_to_be_32(0x25000000); // change dst ip
 
     /* encap:

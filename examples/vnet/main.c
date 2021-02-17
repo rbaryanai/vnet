@@ -31,7 +31,7 @@
 #include "doca_pcap.h"
 #include "doca_log.h"
 #include "gw.h"
-#include "gw_ft.h"
+#include "doca_ft.h"
 #include "gw_port.h"
 
 DOCA_LOG_MODULE(main)
@@ -52,7 +52,7 @@ static const char *pcap_file_name = "/var/opt/rbaryanai/vnet/build/examples/vnet
 static struct doca_pcap_hander *ph;
 
 struct ex_gw {
-    struct gw_ft *ft;
+    struct doca_ft *ft;
 
     struct doca_gw_port *port0; 
     struct doca_gw_port *port1; 
@@ -88,7 +88,7 @@ static inline uint64_t gw_get_time_usec(void)
  * @param ctx
  */
 static 
-void gw_aged_flow_cb(struct gw_ft_user_ctx *ctx)
+void gw_aged_flow_cb(struct doca_ft_user_ctx *ctx)
 {
     struct gw_entry *entry = (struct gw_entry *) &ctx->data[0];
     if (entry->is_hw) {
@@ -97,7 +97,7 @@ void gw_aged_flow_cb(struct gw_ft_user_ctx *ctx)
 }
 
 static
-int gw_handle_new_flow(struct app_pkt_info *pinfo, struct gw_ft_user_ctx **ctx)
+int gw_handle_new_flow(struct doca_pkt_info *pinfo, struct doca_ft_user_ctx **ctx)
     
 {
     struct gw_entry *entry;
@@ -105,7 +105,7 @@ int gw_handle_new_flow(struct app_pkt_info *pinfo, struct gw_ft_user_ctx **ctx)
     
     switch(cls) {
         case GW_CLS_OL_TO_UL:
-            if (!gw_ft_add_new(gw_ins->ft, pinfo,ctx)) {
+            if (!doca_ft_add_new(gw_ins->ft, pinfo,ctx)) {
                 DOCA_LOG_DBG("failed create new entry");
                 return -1;
             }
@@ -118,7 +118,7 @@ int gw_handle_new_flow(struct app_pkt_info *pinfo, struct gw_ft_user_ctx **ctx)
             entry->is_hw = true;
             break;
         case GW_CLS_OL_TO_OL:
-            if (!gw_ft_add_new(gw_ins->ft, pinfo,ctx)) {
+            if (!doca_ft_add_new(gw_ins->ft, pinfo,ctx)) {
                 DOCA_LOG_DBG("failed create new entry");
                 return -1;
             }
@@ -133,7 +133,7 @@ int gw_handle_new_flow(struct app_pkt_info *pinfo, struct gw_ft_user_ctx **ctx)
             // add flow to pipeline
             break;
         case GW_BYPASS_L4:
-            if (!gw_ft_add_new(gw_ins->ft, pinfo,ctx)) {
+            if (!doca_ft_add_new(gw_ins->ft, pinfo,ctx)) {
                 DOCA_LOG_DBG("failed create new entry");
                 return -1;
             }
@@ -146,12 +146,12 @@ int gw_handle_new_flow(struct app_pkt_info *pinfo, struct gw_ft_user_ctx **ctx)
 }
 
 static
-void gw_handle_packet(struct app_pkt_info *pinfo)
+void gw_handle_packet(struct doca_pkt_info *pinfo)
 {
-    struct gw_ft_user_ctx *ctx = NULL;
+    struct doca_ft_user_ctx *ctx = NULL;
     struct gw_entry *entry;
 
-    if(!gw_ft_find(gw_ins->ft, pinfo, &ctx)){
+    if(!doca_ft_find(gw_ins->ft, pinfo, &ctx)){
         if (gw_handle_new_flow(pinfo,&ctx)) {
             return;
         }
@@ -171,7 +171,7 @@ gw_process_pkts(void)
 	uint16_t nb_rx;
 	uint16_t i;
 	uint16_t j;
-        struct app_pkt_info pinfo;
+        struct doca_pkt_info pinfo;
 
 	while (!force_quit) {
             for (port_id = 0; port_id < 2; port_id++) { 
@@ -179,7 +179,7 @@ gw_process_pkts(void)
                     nb_rx = rte_eth_rx_burst(port_id, i, mbufs, GW_RX_BURST_SIZE);
                     if (nb_rx) {
                         for (j = 0; j < nb_rx; j++) {
-                            memset(&pinfo,0, sizeof(struct app_pkt_info)); 
+                            memset(&pinfo,0, sizeof(struct doca_pkt_info)); 
                             if(!gw_parse_packet(GW_PKT_L2(mbufs[j]),GW_PKT_LEN(mbufs[j]), &pinfo)){
                                 pinfo.orig_port_id = mbufs[j]->port;
                                 if (pinfo.outer.l3_type == 4) {
@@ -288,7 +288,7 @@ static int init_gw(void)
     }
     
     memset(gw_ins, 0, sizeof(struct ex_gw));
-    gw_ins->ft = gw_ft_create(GW_MAX_FLOWS , sizeof(struct gw_entry), &gw_aged_flow_cb);
+    gw_ins->ft = doca_ft_create(GW_MAX_FLOWS , sizeof(struct gw_entry), &gw_aged_flow_cb);
     if ( gw_ins->ft == NULL )
         goto fail_init;
     

@@ -1,7 +1,8 @@
 #include <unistd.h>
 #include <stdio.h>
 #include "rte_mbuf.h"
-#include "gw_ft.h"
+#include "doca_ft.h"
+#include "doca_ft_key.h"
 #include "rte_hash_crc.h"
 #include "rte_malloc.h"
 #include "rte_ip.h"
@@ -14,61 +15,60 @@
 
 DOCA_LOG_MODULE(flow_table)
 
-static int _gw_ft_destory_flow(struct gw_ft *ft, struct gw_ft_key *key);
+static int _doca_ft_destory_flow(struct doca_ft *ft, struct doca_ft_key *key);
 
-
-struct gw_ft_entry {
-    LIST_ENTRY(gw_ft_entry) next; /* entry pointers in the list. */
-    struct gw_ft_key key;
+struct doca_ft_entry {
+    LIST_ENTRY(doca_ft_entry) next; /* entry pointers in the list. */
+    struct doca_ft_key key;
     uint64_t expiration;
     uint64_t last_counter;
     uint64_t sw_ctr;
     uint8_t hw_off;
 
-    struct gw_ft_user_ctx user_ctx;
+    struct doca_ft_user_ctx user_ctx;
 };
 
-LIST_HEAD(gw_ft_entry_head, gw_ft_entry );
+LIST_HEAD(doca_ft_entry_head, doca_ft_entry );
 
-struct gw_ft_bucket {
-    struct gw_ft_entry_head head;
+struct doca_ft_bucket {
+    struct doca_ft_entry_head head;
     rte_spinlock_t lock;
 };
 
 
-struct gw_ft_stats {
+struct doca_ft_stats {
     uint64_t add;
     uint64_t rm;
 
     uint64_t memuse;
 };
 
-struct gw_ft_cfg {
+struct doca_ft_cfg {
     uint32_t size;
     uint32_t mask;
     uint32_t user_data_size;
     uint32_t entry_size;
 };
 
-struct gw_ft {
-    struct gw_ft_cfg cfg;
-    struct gw_ft_stats stats;
+struct doca_ft {
+    struct doca_ft_cfg cfg;
+    struct doca_ft_stats stats;
     volatile int stop_aging_thread;
     uint32_t fid_ctr;
 
     struct doca_gauge *cps_gauge;
 
-    void (*gw_aging_cb)(struct gw_ft_user_ctx *ctx);
-    struct gw_ft_bucket buckets[0];
+    void (*gw_aging_cb)(struct doca_ft_user_ctx *ctx);
+    struct doca_ft_bucket buckets[0];
 };
 
 
-static void * gw_ft_aging_main(void *void_ptr)
+static void * doca_ft_aging_main(void *void_ptr)
 {
     unsigned int i;
-    struct gw_ft * ft = (struct gw_ft *) void_ptr; 
-    struct gw_ft_entry_head *first;
-    struct gw_ft_entry *node;
+    struct doca_ft * ft = (struct doca_ft *) void_ptr; 
+    struct doca_ft_entry_head *first;
+    struct doca_ft_entry *node;
     if (!ft){
         DOCA_LOG_CRIT("no ft, abort aging\n");
         return NULL;
@@ -93,7 +93,7 @@ static void * gw_ft_aging_main(void *void_ptr)
                         }
                         if(node->expiration < t){
                             DOCA_LOG_DBG("removing flow");
-                            _gw_ft_destory_flow(ft, &node->key);
+                            _doca_ft_destory_flow(ft, &node->key);
                             still_aging = true;
                             break;
                         }
@@ -114,17 +114,17 @@ static void * gw_ft_aging_main(void *void_ptr)
  *
  * @param ft
  */
-static void gw_ft_aging_thread_start(struct gw_ft *ft)
+static void doca_ft_aging_thread_start(struct doca_ft *ft)
 {
     pthread_t inc_x_thread;
 
     // create a second thread which executes inc_x(&x) 
-    if(pthread_create(&inc_x_thread, NULL, gw_ft_aging_main, ft)) {
+    if(pthread_create(&inc_x_thread, NULL, doca_ft_aging_main, ft)) {
         fprintf(stderr, "Error creating thread\n");
     }
 }
 
-static uint32_t gw_ft_key_hash(struct gw_ft_key *key)
+static uint32_t doca_ft_key_hash(struct doca_ft_key *key)
 {
     uint32_t hash = 0;
     if(!key){
@@ -139,10 +139,10 @@ static uint32_t gw_ft_key_hash(struct gw_ft_key *key)
     return hash;
 }
 
-struct gw_ft *gw_ft_create(int size, uint32_t user_data_size, void (*gw_aging_cb)(struct gw_ft_user_ctx *ctx))
+struct doca_ft *doca_ft_create(int size, uint32_t user_data_size, void (*gw_aging_cb)(struct doca_ft_user_ctx *ctx))
 {
     struct doca_gauge_cfg gauge_cfg = {20,1000};
-    struct gw_ft *ft;
+    struct doca_ft *ft;
     uint32_t act_size;
     uint32_t alloc_size;
     uint32_t i;
@@ -155,8 +155,8 @@ struct gw_ft *gw_ft_create(int size, uint32_t user_data_size, void (*gw_aging_cb
     } else {
             act_size = size;
     }
-    alloc_size = sizeof(struct gw_ft) +
-		     sizeof(struct  gw_ft_bucket) * act_size;
+    alloc_size = sizeof(struct doca_ft) +
+		     sizeof(struct  doca_ft_bucket) * act_size;
    DOCA_LOG_DBG("alloc size =%d",alloc_size);
 
     ft = malloc(alloc_size*2);
@@ -166,7 +166,7 @@ struct gw_ft *gw_ft_create(int size, uint32_t user_data_size, void (*gw_aging_cb
         return NULL;
     }
 
-    ft->cfg.entry_size = sizeof(struct gw_ft_entry) + user_data_size;
+    ft->cfg.entry_size = sizeof(struct doca_ft_entry) + user_data_size;
     ft->cfg.user_data_size = user_data_size;
     ft->cfg.size = act_size;
     ft->cfg.mask = act_size - 1;
@@ -178,7 +178,7 @@ struct gw_ft *gw_ft_create(int size, uint32_t user_data_size, void (*gw_aging_cb
     for( i = 0 ; i < ft->cfg.size ; i++){
         rte_spinlock_init(&ft->buckets[i].lock);
     }
-    gw_ft_aging_thread_start(ft);
+    doca_ft_aging_thread_start(ft);
     return ft;
 }
 
@@ -186,34 +186,34 @@ struct gw_ft *gw_ft_create(int size, uint32_t user_data_size, void (*gw_aging_cb
 
 
 static
-struct gw_ft_entry *_gw_ft_find(struct gw_ft *ft, struct gw_ft_key *key)
+struct doca_ft_entry *_doca_ft_find(struct doca_ft *ft, struct doca_ft_key *key)
 {
     uint32_t hash;
     uint32_t idx;
-    struct gw_ft_entry_head *first;
-    struct gw_ft_entry *node;
+    struct doca_ft_entry_head *first;
+    struct doca_ft_entry *node;
 
-    hash = gw_ft_key_hash(key);
+    hash = doca_ft_key_hash(key);
     idx = hash & ft->cfg.mask;
     DOCA_LOG_DBG("looking for index%d",idx);
     first = &ft->buckets[idx].head;
     LIST_FOREACH(node, first, next) {
-        if (gw_ft_key_equal(&node->key, key)){
+        if (doca_ft_key_equal(&node->key, key)){
             return node;
         }
     }
     return NULL;
 }
 
-bool gw_ft_find(struct gw_ft *ft, struct app_pkt_info *pinfo, 
-                                 struct gw_ft_user_ctx **ctx)
+bool doca_ft_find(struct doca_ft *ft, struct doca_pkt_info *pinfo, 
+                                 struct doca_ft_user_ctx **ctx)
 {
-    struct gw_ft_entry *fe;
-    struct gw_ft_key key = {0};
-    if (gw_ft_key_fill(pinfo, &key))
+    struct doca_ft_entry *fe;
+    struct doca_ft_key key = {0};
+    if (doca_ft_key_fill(pinfo, &key))
         return false;
 
-    fe = _gw_ft_find(ft, &key);
+    fe = _doca_ft_find(ft, &key);
     if (fe == NULL )
         return false;
 
@@ -221,13 +221,13 @@ bool gw_ft_find(struct gw_ft *ft, struct app_pkt_info *pinfo,
     return true; 
 }
 
-bool gw_ft_add_new(struct gw_ft *ft, struct app_pkt_info *pinfo,struct gw_ft_user_ctx **ctx)
+bool doca_ft_add_new(struct doca_ft *ft, struct doca_pkt_info *pinfo,struct doca_ft_user_ctx **ctx)
 {
     uint32_t hash;
     int idx;
-    struct gw_ft_key key = {0};
-    struct gw_ft_entry *new_e;
-    struct gw_ft_entry_head *first;
+    struct doca_ft_key key = {0};
+    struct doca_ft_entry *new_e;
+    struct doca_ft_entry_head *first;
     uint64_t sec = rte_get_timer_hz();
     uint64_t t  =  rte_rdtsc();
 
@@ -235,7 +235,7 @@ bool gw_ft_add_new(struct gw_ft *ft, struct app_pkt_info *pinfo,struct gw_ft_use
         return false;
     }
 
-    if (gw_ft_key_fill(pinfo, &key)){
+    if (doca_ft_key_fill(pinfo, &key)){
         fprintf(stderr,"failed on key\n");
        return false;
     }
@@ -252,8 +252,8 @@ bool gw_ft_add_new(struct gw_ft *ft, struct app_pkt_info *pinfo,struct gw_ft_use
     *ctx = &new_e->user_ctx;
 
     DOCA_LOG_DBG("defined new flow %llu", (unsigned int long long)new_e->user_ctx.fid);
-    memcpy(&new_e->key, &key, sizeof(struct gw_ft_key));
-    hash = gw_ft_key_hash(&key);
+    memcpy(&new_e->key, &key, sizeof(struct doca_ft_key));
+    hash = doca_ft_key_hash(&key);
     idx = hash & ft->cfg.mask;
     first = &ft->buckets[idx].head;
 
@@ -269,14 +269,14 @@ bool gw_ft_add_new(struct gw_ft *ft, struct app_pkt_info *pinfo,struct gw_ft_use
 
 
 static 
-int _gw_ft_destory_flow(struct gw_ft *ft, struct gw_ft_key *key)
+int _doca_ft_destory_flow(struct doca_ft *ft, struct doca_ft_key *key)
 {
-    struct gw_ft_entry *f;
+    struct doca_ft_entry *f;
     if(!key || !ft){
         return -1;
     }
 
-    f = _gw_ft_find(ft, key);
+    f = _doca_ft_find(ft, key);
 
     if(f){
 	LIST_REMOVE(f, next);
@@ -289,18 +289,18 @@ int _gw_ft_destory_flow(struct gw_ft *ft, struct gw_ft_key *key)
 
 
 int
-gw_ft_destory_flow(struct gw_ft *ft, struct gw_ft_key *key)
+doca_ft_destory_flow(struct doca_ft *ft, struct doca_ft_key *key)
 {
-    _gw_ft_destory_flow(ft,key);
+    _doca_ft_destory_flow(ft,key);
     return 0;
 }
 
 
-void gw_ft_destroy(struct gw_ft *ft)
+void doca_ft_destroy(struct doca_ft *ft)
 {
     uint32_t i; 
-    struct gw_ft_entry_head *first;
-    struct gw_ft_entry *node;
+    struct doca_ft_entry_head *first;
+    struct doca_ft_entry *node;
 
     ft->stop_aging_thread = true;
     for (i = 0 ; i < ft->cfg.size ; i++) {

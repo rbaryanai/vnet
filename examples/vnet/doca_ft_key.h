@@ -7,9 +7,9 @@
 #include <sys/types.h>
 
 
-struct app_pkt_info;
+struct doca_pkt_info;
 
-struct gw_ft_key {
+struct doca_ft_key {
     uint32_t ipv4_1;
     uint16_t port_1;
     uint32_t ipv4_2;
@@ -21,7 +21,7 @@ struct gw_ft_key {
     uint32_t vni;
 };
 
-int gw_ft_key_fill(struct app_pkt_info *m, struct gw_ft_key *key);
+int doca_ft_key_fill(struct doca_pkt_info *m, struct doca_ft_key *key);
 
 
 /**
@@ -32,6 +32,6 @@ int gw_ft_key_fill(struct app_pkt_info *m, struct gw_ft_key *key);
  *
  * @return true if keys are equal.
  */
-bool gw_ft_key_equal(struct gw_ft_key *key1, struct gw_ft_key *key2);
+bool doca_ft_key_equal(struct doca_ft_key *key1, struct doca_ft_key *key2);
 
 #endif

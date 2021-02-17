@@ -4,7 +4,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-
 DOCA_LOG_MODULE(doca_gw)
 
 struct doca_fwd_tbl {
@@ -13,7 +12,6 @@ struct doca_fwd_tbl {
     uint32_t id;
     struct doca_fwd_table_cfg cfg;
 };
-
 
 struct doca_gw_pipeline {
     void * handler;
@@ -31,7 +29,6 @@ uint8_t *doca_gw_port_priv_data(struct doca_gw_port *p)
     return &p->user_data[0];
 }
 
-
 int doca_gw_init(struct doca_gw_cfg *cfg,struct doca_gw_error *err)
 {
     DOCA_LOG_INFO("total sessions = %d\n",cfg->total_sessions);
@@ -41,7 +38,6 @@ int doca_gw_init(struct doca_gw_cfg *cfg,struct doca_gw_error *err)
     }
     return 0;
 }
-
 
 struct doca_gw_pipelne_entry {
     int id;
@@ -71,14 +67,12 @@ struct doca_gw_pipelne_entry *doca_gw_pipeline_add_entry(uint16_t pipe_queue,
     return entry;
 }
 
-
 int doca_gw_rm_entry(uint16_t pipe_queue, struct doca_gw_pipelne_entry *entry)
 {
     DOCA_LOG_INFO("(pipe %d) HW release id%d",pipe_queue, entry->id);
     free(entry);
     return 0;
 }
-
 
 /**
  * @brief 
