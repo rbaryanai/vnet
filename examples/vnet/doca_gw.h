@@ -9,6 +9,11 @@ struct doca_gw_port;
 struct doca_gw_pipeline; 
 struct doca_gw_pipelne_entry;
 
+enum doca_gw_modify_flags {
+    DOCA_MOD_NONE = 0,
+    DOCA_MOD_USE_FIB = 1 << 0,
+};
+
 /**
  * @brief - on doca api failure one of 
  *the error reasons should be returned.
@@ -51,10 +56,13 @@ struct doca_gw_port_cfg {
 
 struct doca_gw_match {
 
+    uint8_t  out_src_mac[DOCA_ETHER_ADDR_LEN];
+    uint8_t  out_dst_mac[DOCA_ETHER_ADDR_LEN];
+
     // tunnel
     struct   doca_ip_addr out_src_ip;
     struct   doca_ip_addr out_dst_ip;
-    uint8_t  out_proto_type;
+    uint8_t  out_l3_type;
     uint16_t out_src_port;
     uint16_t out_dst_port;
 
@@ -64,14 +72,13 @@ struct doca_gw_match {
     struct doca_ip_addr in_src_ip;
     struct doca_ip_addr in_dst_ip;
 
-    uint8_t  in_proto_type;
+    uint8_t  in_l3_type;
     uint16_t in_src_port;
     uint16_t in_dst_port;
 };
 
 struct doca_gw_encap_action {
   
-    uint8_t flags;
     //TODO: do we need here an array?  
     uint8_t src_mac[DOCA_ETHER_ADDR_LEN];
     uint8_t dst_mac[DOCA_ETHER_ADDR_LEN];
@@ -83,14 +90,21 @@ struct doca_gw_encap_action {
 
 struct doca_gw_actions {
 
+    uint8_t flags;          
     bool decap;
-    // tunnel
+    
+    uint8_t mod_src_mac[DOCA_ETHER_ADDR_LEN];
+    uint8_t mod_dst_mac[DOCA_ETHER_ADDR_LEN];
 
     struct doca_ip_addr mod_src_ip;
     struct doca_ip_addr mod_dst_ip;
 
     uint16_t mod_src_port;
     uint16_t mod_dst_port;
+
+    bool     dec_ttl;
+    uint32_t tcp_seq_shift;
+    uint32_t tcp_ack_shift;
     
     struct doca_gw_encap_action encap;
 };
@@ -115,7 +129,7 @@ struct doca_gw_pipeline_cfg {
     struct doca_gw_match    *match;
     struct doca_gw_actions  *actions;
     struct doca_gw_monitor  *monitor;
-    bool                    count; // count for entire pipe
+    bool                    count;    /* count for entire pipe */
 };
 
 enum doca_fwd_tbl_type {
@@ -138,6 +152,12 @@ struct doca_fwd_table_cfg {
     };
 };
 
+struct doca_gw_query {
+    uint64_t total_bytes;
+    uint64_t total_pkts;
+    uint32_t last_used;  /* in seconds */
+};
+
 /**
  * @brief 
  *
@@ -158,12 +178,13 @@ int doca_gw_init(struct doca_gw_cfg *cfg, struct doca_gw_error *err);
 
 
 /**
- * @brief 
+ * @brief - start a doca port. doca ports are required to define pipelines.
+ *      ports are also required for forwarding.
  *
- * @param cfg
- * @param err
+ * @param cfg   - port configuration 
+ * @param err   - on failure will hold failed message
  *
- * @return 
+ * @return port instance on success
  */
 struct doca_gw_port *doca_gw_port_start(struct doca_gw_port_cfg *cfg, struct doca_gw_error *err);
 
@@ -191,20 +212,31 @@ uint8_t *doca_gw_port_priv_data(struct doca_gw_port *p);
 
 
 /**
+ * @brief - create new pipeline. 
+ *
+ * @param cfg 
+ * @param err    - err reason and message on failure
+ *
+ * @return pipeline handler or NULL on failure
+ */
+struct doca_gw_pipeline *doca_gw_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_gw_error *err);
+
+/**
  * @brief 
  *
- * @param 
+ * @param pipe_queue
+ * @param pipeline
  * @param match
+ * @param actions
  * @param mod
- * @param fwd_tbl
+ * @param fwd
+ * @param err
  *
  * @return 
  */
-struct doca_gw_pipeline *doca_gw_create_pipe(struct doca_gw_pipeline_cfg *cfg);
-
 struct doca_gw_pipelne_entry *doca_gw_pipeline_add_entry(uint16_t pipe_queue, 
                       struct doca_gw_pipeline *pipeline, struct doca_gw_match *match,
-                      struct doca_gw_actions *actions,struct doca_gw_monitor *mon,
+                      struct doca_gw_actions *actions,struct doca_gw_monitor *mod,
                       struct doca_fwd_tbl *fwd, struct doca_gw_error *err);
 
 /**
@@ -215,5 +247,16 @@ struct doca_gw_pipelne_entry *doca_gw_pipeline_add_entry(uint16_t pipe_queue,
  * @return 
  */
 int doca_gw_rm_entry(uint16_t pipe_queue, struct doca_gw_pipelne_entry *entry);
+
+
+/**
+ * @brief - extract information about specific entry
+ *
+ * @param pe - entry handler
+ * @param q  - information will be placed here
+ *
+ * @return 0 on success
+ */
+int doca_gw_query(struct doca_gw_pipelne_entry *pe, struct doca_gw_query *q);
 
 #endif

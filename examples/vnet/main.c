@@ -33,16 +33,16 @@
 #include "gw.h"
 #include "doca_ft.h"
 #include "gw_port.h"
+#include "doca_vnf.h"
 
 DOCA_LOG_MODULE(main)
 
-#define GW_PKT_L2(M) rte_pktmbuf_mtod(M,uint8_t *)
-#define GW_PKT_LEN(M) rte_pktmbuf_pkt_len(M)
+#define VNF_PKT_L2(M) rte_pktmbuf_mtod(M,uint8_t *)
+#define VNF_PKT_LEN(M) rte_pktmbuf_pkt_len(M)
 
-#define GW_MAX_FLOWS (4096)
-#define GW_ENTRY_BUFF_SIZE (128)
-#define GW_RX_BURST_SIZE (32)
-#define GW_NUM_OF_PORTS (2)
+#define VNF_ENTRY_BUFF_SIZE (128)
+#define VNF_RX_BURST_SIZE (32)
+#define VNF_NUM_OF_PORTS (2)
 
 static volatile bool force_quit;
 
@@ -51,26 +51,7 @@ static uint16_t nr_queues = 2;
 static const char *pcap_file_name = "/var/opt/rbaryanai/vnet/build/examples/vnet/test.pcap";
 static struct doca_pcap_hander *ph;
 
-struct ex_gw {
-    struct doca_ft *ft;
-
-    struct doca_gw_port *port0; 
-    struct doca_gw_port *port1; 
-
-    // pipeline of overlay to underlay
-    struct doca_gw_pipeline *p1_over_under[GW_NUM_OF_PORTS];
-
-};
-
-struct gw_entry {
-    int total_pkts;
-    int total_bytes;
-    bool is_hw;
-    struct doca_gw_pipelne_entry *hw_entry;
-    char readble_str[GW_ENTRY_BUFF_SIZE];
-};
-
-struct ex_gw *gw_ins;
+static struct doca_vnf *vnf;
 
 static inline uint64_t gw_get_time_usec(void)
 {
@@ -82,91 +63,11 @@ static inline uint64_t gw_get_time_usec(void)
     return tv.tv_sec * 1000000 + tv.tv_usec;
 }
 
-/**
- * @brief - called when flow is aged out in FT.
- *
- * @param ctx
- */
-static 
-void gw_aged_flow_cb(struct doca_ft_user_ctx *ctx)
-{
-    struct gw_entry *entry = (struct gw_entry *) &ctx->data[0];
-    if (entry->is_hw) {
-        gw_rm_pipeline_entry(entry->hw_entry);
-    }
-}
-
-static
-int gw_handle_new_flow(struct doca_pkt_info *pinfo, struct doca_ft_user_ctx **ctx)
-    
-{
-    struct gw_entry *entry;
-    enum gw_classification cls = gw_classifiy_pkt(pinfo);
-    
-    switch(cls) {
-        case GW_CLS_OL_TO_UL:
-            if (!doca_ft_add_new(gw_ins->ft, pinfo,ctx)) {
-                DOCA_LOG_DBG("failed create new entry");
-                return -1;
-            }
-            entry = (struct gw_entry *) &(*ctx)->data[0];
-            entry->hw_entry = gw_pipeline_add_ol_to_ul_entry(pinfo,gw_ins->p1_over_under[pinfo->orig_port_id]);
-            if (entry->hw_entry == NULL) {
-                DOCA_LOG_DBG("failed to offload");
-                return -1;
-            }
-            entry->is_hw = true;
-            break;
-        case GW_CLS_OL_TO_OL:
-            if (!doca_ft_add_new(gw_ins->ft, pinfo,ctx)) {
-                DOCA_LOG_DBG("failed create new entry");
-                return -1;
-            }
-            entry = (struct gw_entry *) &(*ctx)->data[0];
-            entry->hw_entry = gw_pipeline_add_ol_to_ol_entry(pinfo,gw_ins->p1_over_under[pinfo->orig_port_id]);
-            if (entry->hw_entry == NULL) {
-                DOCA_LOG_DBG("failed to offload");
-                return -1;
-            }
-            entry->is_hw = true;
-
-            // add flow to pipeline
-            break;
-        case GW_BYPASS_L4:
-            if (!doca_ft_add_new(gw_ins->ft, pinfo,ctx)) {
-                DOCA_LOG_DBG("failed create new entry");
-                return -1;
-            }
-            break; 
-        default:
-            DOCA_LOG_WARN("BYPASS");
-            return -1;
-    }
-    return 0;
-}
-
-static
-void gw_handle_packet(struct doca_pkt_info *pinfo)
-{
-    struct doca_ft_user_ctx *ctx = NULL;
-    struct gw_entry *entry;
-
-    if(!doca_ft_find(gw_ins->ft, pinfo, &ctx)){
-        if (gw_handle_new_flow(pinfo,&ctx)) {
-            return;
-        }
-    }
-    entry = (struct gw_entry *) &ctx->data[0];
-    entry->total_pkts++;
-    DOCA_LOG_DBG("total packets %d",entry->total_pkts);
-    doca_pcap_write(ph,pinfo->outer.l2, pinfo->len, gw_get_time_usec(), 0); 
-}
-
 
 static void
 gw_process_pkts(void)
 {
-	struct rte_mbuf *mbufs[GW_RX_BURST_SIZE];
+	struct rte_mbuf *mbufs[VNF_RX_BURST_SIZE];
 	struct rte_flow_error error;
 	uint16_t nb_rx;
 	uint16_t i;
@@ -176,16 +77,19 @@ gw_process_pkts(void)
 	while (!force_quit) {
             for (port_id = 0; port_id < 2; port_id++) { 
                 for (i = 0; i < nr_queues; i++) {
-                    nb_rx = rte_eth_rx_burst(port_id, i, mbufs, GW_RX_BURST_SIZE);
+                    nb_rx = rte_eth_rx_burst(port_id, i, mbufs, VNF_RX_BURST_SIZE);
                     if (nb_rx) {
                         for (j = 0; j < nb_rx; j++) {
                             memset(&pinfo,0, sizeof(struct doca_pkt_info)); 
-                            if(!gw_parse_packet(GW_PKT_L2(mbufs[j]),GW_PKT_LEN(mbufs[j]), &pinfo)){
+                            if(!doca_parse_packet(VNF_PKT_L2(mbufs[j]),VNF_PKT_LEN(mbufs[j]), &pinfo)){
                                 pinfo.orig_port_id = mbufs[j]->port;
                                 if (pinfo.outer.l3_type == 4) {
-                                    gw_handle_packet(&pinfo);
-                                    //gw_parse_pkt_str(&pinfo, strbuff,DEBUG_BUFF_SIZE);
-                                    //printf("got mbuf on port == %d,\n %s", m->port,strbuff);
+
+                                    vnf->doca_vnf_process_pkt(&pinfo);
+                                    if(ph) {
+                                        doca_pcap_write(ph,pinfo.outer.l2, pinfo.len, gw_get_time_usec(), 0); 
+                                    }
+                                    //gw_handle_packet(&pinfo);
                                 }
                             }
                             rte_eth_tx_burst((mbufs[j]->port == 0) ? 1 : 0, 0, &mbufs[j], 1);
@@ -216,6 +120,7 @@ signal_handler(int signum)
 	}
 }
 
+/*
 static int init_doca(void)
 {
     int ret = 0;
@@ -224,13 +129,12 @@ static int init_doca(void)
     struct gw_port_cfg cfg_port1 = { .n_queues = 4, .port_id = 1 };
     struct doca_gw_error err = {0};
 
-    struct doca_gw_cfg cfg = {GW_MAX_FLOWS};
+    struct doca_gw_cfg cfg = {VNF_MAX_FLOWS};
     if (doca_gw_init(&cfg,&err)) { 
         DOCA_LOG_ERR("failed to init doca:%s",err.message);
         return -1;
     }
 
-    // adding ports
     gw_ins->port0 = gw_init_doca_port(&cfg_port0);
     gw_ins->port1 = gw_init_doca_port(&cfg_port1);
 
@@ -239,12 +143,11 @@ static int init_doca(void)
         return ret;
     }
 
-    // overlay to unserlay pipeline
     gw_ins->p1_over_under[0] = gw_init_ol_to_ul_pipeline(gw_ins->port0);
     gw_ins->p1_over_under[1] = gw_init_ol_to_ul_pipeline(gw_ins->port1);
 
     return ret;
-}
+}*/
 
 static int
 init_dpdk(int argc, char **argv)
@@ -276,36 +179,7 @@ init_dpdk(int argc, char **argv)
         return 0;
 }
 
-
-static int init_gw(void)
-{
-    
-
-    gw_ins = (struct ex_gw *) malloc(sizeof(struct ex_gw));
-    if ( gw_ins == NULL ) {
-        DOCA_LOG_CRIT("failed to allocate GW");
-        goto fail_init;
-    }
-    
-    memset(gw_ins, 0, sizeof(struct ex_gw));
-    gw_ins->ft = doca_ft_create(GW_MAX_FLOWS , sizeof(struct gw_entry), &gw_aged_flow_cb);
-    if ( gw_ins->ft == NULL )
-        goto fail_init;
-    
-    if (init_doca()){
-        goto fail_init;
-    }
-
-    gw_init();
-    return 0;
-fail_init:
-    if (gw_ins->ft != NULL)
-        free(gw_ins->ft);
-    if (gw_ins != NULL) 
-        free(gw_ins);
-    gw_ins = NULL;
-    return -1;
-}
+static bool capture_en = 0;
 
 int
 main(int argc, char **argv)
@@ -315,18 +189,22 @@ main(int argc, char **argv)
             return -1;
         }
 
+        DOCA_LOG_INFO("starting doca\n");
+
 	gw_init_port(0, nr_queues);
 	gw_init_port(1, nr_queues);
 
-        DOCA_LOG_INFO("starting doca\n");
-        if (init_gw()){
-            rte_exit(EXIT_FAILURE,"failed to init doca");
-        }
-        DOCA_LOG_INFO("GW initiated!\n");
+        vnf = gw_get_doca_vnf();
+        vnf->doca_vnf_init();
 
-        ph = doca_pcap_file_start(pcap_file_name);
+        DOCA_LOG_INFO("VNF initiated!\n");
+
+        if (capture_en) {
+            ph = doca_pcap_file_start(pcap_file_name);
+        }
 
 	gw_process_pkts();
 
+        vnf->doca_vnf_destroy();
 	return 0;
 }

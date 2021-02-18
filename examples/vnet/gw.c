@@ -4,10 +4,12 @@
 #include <string.h>
 
 #include "gw.h"
+#include "doca_vnf.h"
 #include "doca_gw.h"
 #include "doca_utils.h"
 #include "doca_log.h"
 #include "doca_fib.h"
+#include "doca_ft.h"
 
 #include <arpa/inet.h>
 #include "rte_ether.h"
@@ -20,15 +22,17 @@
 
 DOCA_LOG_MODULE(GW)
 
-#define GW_VARIFY_LEN(pkt_len, off) if (off > pkt_len) { \
-                                            return -1; \
-                                            }
 #define GW_MAC_STR_FMT "%x:%x:%x:%x:%x:%x"
 #define GW_MAC_EXPAND(b) b[0],b[1],b[2],b[3],b[4],b[5]
 #define GW_IPV4_STR_FMT "%d:%d:%d:%d"
 #define GW_IPV4_EXPAND(b) b[0],b[1],b[2],b[3]
 #define GW_MAX_PORT_ID  (2)
 #define GW_NEXT_HOPS_NUM  (16)
+#define GW_NUM_OF_PORTS (2)
+#define GW_MAX_FLOWS (4096)
+
+static void gw_aged_flow_cb(struct doca_ft_user_ctx *ctx);
+
 
 struct gw_next_hop {
     uint32_t ip;
@@ -41,6 +45,29 @@ struct gw_slb {
     struct doca_fib_tbl *gw_fib_tbl;
     struct gw_next_hop nodes[GW_NEXT_HOPS_NUM];
 };
+
+struct ex_gw {
+    struct doca_ft *ft;
+
+    struct doca_gw_port *port0; 
+    struct doca_gw_port *port1; 
+
+    // pipeline of overlay to underlay
+    struct doca_gw_pipeline *p1_over_under[GW_NUM_OF_PORTS];
+
+};
+
+struct gw_entry {
+    int total_pkts;
+    int total_bytes;
+    bool is_hw;
+    struct doca_gw_pipelne_entry *hw_entry;
+};
+
+struct ex_gw *gw_ins;
+
+
+
 
 static struct gw_slb *gw_slb;
 static void gw_slb_set_next_node(uint32_t *node_ip, uint32_t *node_vni) 
@@ -92,7 +119,7 @@ static void gw_build_underlay_overlay_match(struct doca_gw_match *match)
 {
     match->out_dst_ip.a.ipv4_addr = 0xffffffff;
     match->out_dst_ip.type = DOCA_IPV4;
-    match->out_proto_type = DOCA_IPV4;
+    match->out_l3_type = DOCA_IPV4;
     match->out_dst_port = rte_be_to_cpu_16(4789); // VXLAN (change to enum/define)
 
 
@@ -103,7 +130,7 @@ static void gw_build_underlay_overlay_match(struct doca_gw_match *match)
     match->in_dst_ip.a.ipv4_addr = 0xffffffff;
     match->in_src_ip.a.ipv4_addr = 0xffffffff;
     match->in_src_ip.type = DOCA_IPV4;
-    match->in_proto_type = 0xff;
+    match->in_l3_type = 0xff;
 
     match->in_src_port = 0xffff;
     match->in_dst_port = 0xffff;
@@ -139,6 +166,7 @@ static struct doca_gw_pipeline *gw_build_underlay_overlay(struct doca_gw_port *p
     // a real value means a constant value and should not be added on any entry
     // added
     struct doca_gw_pipeline_cfg pipe_cfg = {0};
+    struct doca_gw_error err = {0};
     struct doca_gw_match match = {0};
     struct doca_gw_actions actions = {0};
     struct doca_gw_monitor monitor = {0};
@@ -154,7 +182,7 @@ static struct doca_gw_pipeline *gw_build_underlay_overlay(struct doca_gw_port *p
     pipe_cfg.monitor = &monitor;
     pipe_cfg.count  = false;
 
-    return doca_gw_create_pipe(&pipe_cfg);
+    return doca_gw_create_pipe(&pipe_cfg,&err);
 }
 
 static struct doca_gw_pipeline *gw_build_overlay_to_overlay(struct doca_gw_port *port)
@@ -164,6 +192,7 @@ static struct doca_gw_pipeline *gw_build_overlay_to_overlay(struct doca_gw_port 
     // a real value means a constant value and should not be added on any entry
     // added
     struct doca_gw_pipeline_cfg pipe_cfg = {0};
+    struct doca_gw_error err = {0};
     struct doca_gw_match match = {0};
     struct doca_gw_actions actions = {0};
     struct doca_gw_monitor monitor = {0};
@@ -180,181 +209,7 @@ static struct doca_gw_pipeline *gw_build_overlay_to_overlay(struct doca_gw_port 
     pipe_cfg.monitor = &monitor;
     pipe_cfg.count  = false;
 
-    return doca_gw_create_pipe(&pipe_cfg);
-}
-
-static 
-int gw_parse_pkt_format(uint8_t *data, int len, bool l2, struct doca_pkt_format *fmt)
-{
-    // parse outer
-    struct rte_ether_hdr *eth = NULL;
-    struct rte_ipv4_hdr * iphdr;
-    int l3_off = 0;
-    int l4_off = 0;
-    int l7_off = 0;
-    
-    if (l2) {
-        eth = (struct rte_ether_hdr *) data;
-        fmt->l2 = data;
-
-        //TODO: add ipv6
-        switch(rte_be_to_cpu_16(eth->ether_type)){
-            case RTE_ETHER_TYPE_IPV4:
-                l3_off = sizeof(struct rte_ether_hdr);        
-            break;
-            case RTE_ETHER_TYPE_IPV6:
-                l3_off = sizeof(struct rte_ether_hdr);        
-                fmt->l3_type = 6; //const
-                return -1;
-            case RTE_ETHER_TYPE_ARP:
-                //TODO: arps might need special handling
-                return -1; 
-            default:
-                //TODO: should be rate limited
-                DOCA_LOG_WARN("unsupported type %x\n",eth->ether_type);
-                return -1;
-        }
-    }
-
-    iphdr = (struct rte_ipv4_hdr *) (data + l3_off);
-    if(iphdr->src_addr == 0 || iphdr->dst_addr == 0) {
-        return -1;
-    }
-
-    fmt->l3 = (data + l3_off);
-    fmt->l3_type = GW_IPV4; 
-
-    l4_off = l3_off +  rte_ipv4_hdr_len(iphdr); 
-    fmt->l4 = data + l4_off;
-    
-    switch(iphdr->next_proto_id){
-        case IPPROTO_TCP:
-            {
-                struct rte_tcp_hdr * tcphdr  = (struct rte_tcp_hdr *) (data + l4_off);
-                l7_off = l4_off +  (( tcphdr->data_off & 0xf0) >> 2);
-                GW_VARIFY_LEN(len, l7_off);
-
-                fmt->l4_type = IPPROTO_TCP;
-                fmt->l7 = (data + l7_off);
-            }
-            break;
-        case IPPROTO_UDP:
-            {
-                struct rte_udp_hdr * udphdr = (struct rte_udp_hdr *)(data + l4_off);
-                l7_off = l4_off + sizeof(*udphdr);
-
-                fmt->l4_type = IPPROTO_UDP;
-                GW_VARIFY_LEN(len, l7_off);
-                fmt->l7 = (data + l7_off);
-            }
-            break;
-        case IPPROTO_GRE:
-            fmt->l4_type = IPPROTO_GRE;
-            break;
-        case IPPROTO_ICMP:
-                fmt->l4_type = IPPROTO_ICMP;
-                break;
-        default:
-            DOCA_LOG_INFO("unsupported l4 %d\n",iphdr->next_proto_id);
-            return -1;
-    }
-
-    return 0;
-}
-
-static int gw_parse_is_tun(struct doca_pkt_info *pinfo)
-{
-    //TODO: support ipv6
-    if (pinfo->outer.l3_type != GW_IPV4) {
-        return 0;
-    }
-
-    if (pinfo->outer.l3_type == IPPROTO_GRE) {
-        // need to parse jre
-        struct rte_gre_hdr *gre_hdr = (struct rte_gre_hdr *) pinfo->outer.l4;
-        // need to now how to parse
-        if (gre_hdr->k) {
-                return 0;
-        }
-        pinfo->tun_type = APP_TUN_GRE;
-        return sizeof(struct rte_gre_hdr);
-   }
-
-
-   if ( pinfo->outer.l4_type == IPPROTO_UDP ) {
-        struct rte_udp_hdr *udphdr = (struct rte_udp_hdr *) pinfo->outer.l4;
-        switch ( rte_cpu_to_be_16(udphdr->dst_port)){
-            case GW_VXLAN_PORT:
-                {
-                    // this is vxlan
-                    struct rte_vxlan_gpe_hdr *vxlanhdr = (struct rte_vxlan_gpe_hdr *) (pinfo->outer.l4 + sizeof(struct rte_udp_hdr));
-                    if (vxlanhdr->vx_flags & 0x08) {
-                        //TODO: need to check if this gpe
-                        pinfo->tun_type = APP_TUN_VXLAN;
-                        pinfo->tun.vni  = vxlanhdr->vx_vni;
-                        pinfo->tun.l2   = true;
-                    }
-                    return sizeof(struct rte_vxlan_gpe_hdr) + sizeof(struct rte_udp_hdr);
-                }
-            break;
-            default:
-                return 0;
-        }
-    }
-   
-   return 0; 
-}
-
-/**
- * @brief - parse packet and extract outer/inner + tunnels and
- *  put in packet info
- *
- * @param data    - packet raw data (including eth)
- * @param len     - len of the packet
- * @param pinfo   - extracted info is set here
- *
- * @return 0 on success and error otherwise.
- */
-int gw_parse_packet(uint8_t *data, int len, struct doca_pkt_info *pinfo)
-{
-    int off = 0;
-    int inner_off = 0;
-    pinfo->len = len;
-    // parse outer
-
-    if (!pinfo) {
-        fprintf(stderr,"pinfo =%p\n", pinfo);
-        return -1;
-    }
-
-
-    if (gw_parse_pkt_format(data, len, true, &pinfo->outer)) {
-        return -1;
-    }
-
-    off = gw_parse_is_tun(pinfo);
-    // no tunnel parsing is done
-    if (pinfo->tun_type == APP_TUN_NONE) {
-        return 0;
-    }
-
-    switch(pinfo->tun_type){
-        case APP_TUN_GRE:
-            inner_off = (pinfo->outer.l4 - data) + off;
-            if (gw_parse_pkt_format(data + inner_off , len - inner_off, false, &pinfo->inner)) 
-                return -1;
-            break;
-        case APP_TUN_VXLAN:
-            inner_off = (pinfo->outer.l4 - data) + off;
-            if (gw_parse_pkt_format(data + inner_off , len - inner_off, pinfo->tun.l2, &pinfo->inner)) 
-                return -1;
-            break;
-
-        default:
-            break;
-    }
-
-    return 0;
+    return doca_gw_create_pipe(&pipe_cfg,&err);
 }
 
 static int gw_print_eth(uint8_t *data,char *str, int len)
@@ -520,7 +375,7 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_inf
     /* exact inner 5-tuple */
     match.in_dst_ip.a.ipv4_addr = doca_pinfo_inner_ipv4_dst(pinfo);
     match.in_src_ip.a.ipv4_addr = doca_pinfo_inner_ipv4_src(pinfo);
-    match.in_proto_type = pinfo->inner.l4_type;
+    match.in_l3_type = pinfo->inner.l4_type;
     match.in_src_port = doca_pinfo_inner_src_port(pinfo);
     match.in_dst_port = doca_pinfo_inner_dst_port(pinfo);
 
@@ -553,7 +408,7 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ol_entry(struct doca_pkt_inf
     /* exact inner 5-tuple */
     match.in_dst_ip.a.ipv4_addr = doca_pinfo_inner_ipv4_dst(pinfo);
     match.in_src_ip.a.ipv4_addr = doca_pinfo_inner_ipv4_src(pinfo);
-    match.in_proto_type = pinfo->inner.l4_type;
+    match.in_l3_type = pinfo->inner.l4_type;
     match.in_src_port = doca_pinfo_inner_src_port(pinfo);
     match.in_dst_port = doca_pinfo_inner_dst_port(pinfo);
 
@@ -586,9 +441,65 @@ void gw_rm_pipeline_entry(struct doca_gw_pipelne_entry *entry)
 }
 
 
+static int gw_alloc_instance(void)
+{
+    gw_ins = (struct ex_gw *) malloc(sizeof(struct ex_gw));
+    if ( gw_ins == NULL ) {
+        DOCA_LOG_CRIT("failed to allocate GW");
+        goto fail_init;
+    }
+    
+    memset(gw_ins, 0, sizeof(struct ex_gw));
+    gw_ins->ft = doca_ft_create(GW_MAX_FLOWS , sizeof(struct gw_entry), &gw_aged_flow_cb);
+    if ( gw_ins->ft == NULL )
+        goto fail_init;
+    
+    return 0;
+fail_init:
+    if (gw_ins->ft != NULL)
+        free(gw_ins->ft);
+    if (gw_ins != NULL) 
+        free(gw_ins);
+    gw_ins = NULL;
+    return -1;
+}
+
+static int ex_gw_init(void)
+{
+
+    int ret = 0;
+
+    struct gw_port_cfg cfg_port0 = { .n_queues = 4, .port_id = 0 };
+    struct gw_port_cfg cfg_port1 = { .n_queues = 4, .port_id = 1 };
+    struct doca_gw_error err = {0};
+
+    struct doca_gw_cfg cfg = {GW_MAX_FLOWS};
+    gw_alloc_instance();
+    if (doca_gw_init(&cfg,&err)) { 
+        DOCA_LOG_ERR("failed to init doca:%s",err.message);
+        return -1;
+    }
+
+    // adding ports
+    gw_ins->port0 = gw_init_doca_port(&cfg_port0);
+    gw_ins->port1 = gw_init_doca_port(&cfg_port1);
+
+    if (gw_ins->port0 == NULL || gw_ins->port1 == NULL) {
+        DOCA_LOG_ERR("failed to start port %s",err.message);
+        return ret;
+    }
+
+    // overlay to unserlay pipeline
+    gw_ins->p1_over_under[0] = gw_init_ol_to_ul_pipeline(gw_ins->port0);
+    gw_ins->p1_over_under[1] = gw_init_ol_to_ul_pipeline(gw_ins->port1);
+
+    return ret;
+}
+
 int gw_init(void)
 {
     int i;
+    ex_gw_init();
     gw_slb = (struct gw_slb*) malloc(sizeof(struct gw_slb));
     if (gw_slb == NULL) {
         DOCA_LOG_ERR("failed to alloc slb");
@@ -615,3 +526,100 @@ int gw_init(void)
     }
     return 0;
 }
+
+static int gw_destroy(void)
+{
+    return 0;
+}
+
+/**
+ * @brief - called when flow is aged out in FT.
+ *
+ * @param ctx
+ */
+static 
+void gw_aged_flow_cb(struct doca_ft_user_ctx *ctx)
+{
+    struct gw_entry *entry = (struct gw_entry *) &ctx->data[0];
+    if (entry->is_hw) {
+        gw_rm_pipeline_entry(entry->hw_entry);
+    }
+}
+
+static
+int gw_handle_new_flow(struct doca_pkt_info *pinfo, struct doca_ft_user_ctx **ctx)
+    
+{
+    struct gw_entry *entry;
+    enum gw_classification cls = gw_classifiy_pkt(pinfo);
+    
+    switch(cls) {
+        case GW_CLS_OL_TO_UL:
+            if (!doca_ft_add_new(gw_ins->ft, pinfo,ctx)) {
+                DOCA_LOG_DBG("failed create new entry");
+                return -1;
+            }
+            entry = (struct gw_entry *) &(*ctx)->data[0];
+            entry->hw_entry = gw_pipeline_add_ol_to_ul_entry(pinfo,gw_ins->p1_over_under[pinfo->orig_port_id]);
+            if (entry->hw_entry == NULL) {
+                DOCA_LOG_DBG("failed to offload");
+                return -1;
+            }
+            entry->is_hw = true;
+            break;
+        case GW_CLS_OL_TO_OL:
+            if (!doca_ft_add_new(gw_ins->ft, pinfo,ctx)) {
+                DOCA_LOG_DBG("failed create new entry");
+                return -1;
+            }
+            entry = (struct gw_entry *) &(*ctx)->data[0];
+            entry->hw_entry = gw_pipeline_add_ol_to_ol_entry(pinfo,gw_ins->p1_over_under[pinfo->orig_port_id]);
+            if (entry->hw_entry == NULL) {
+                DOCA_LOG_DBG("failed to offload");
+                return -1;
+            }
+            entry->is_hw = true;
+
+            // add flow to pipeline
+            break;
+        case GW_BYPASS_L4:
+            if (!doca_ft_add_new(gw_ins->ft, pinfo,ctx)) {
+                DOCA_LOG_DBG("failed create new entry");
+                return -1;
+            }
+            break; 
+        default:
+            DOCA_LOG_WARN("BYPASS");
+            return -1;
+    }
+    return 0;
+}
+
+static
+int gw_handle_packet(struct doca_pkt_info *pinfo)
+{
+    struct doca_ft_user_ctx *ctx = NULL;
+    struct gw_entry *entry;
+
+    if(!doca_ft_find(gw_ins->ft, pinfo, &ctx)){
+        if (gw_handle_new_flow(pinfo,&ctx)) {
+            return -1;
+        }
+    }
+    entry = (struct gw_entry *) &ctx->data[0];
+    entry->total_pkts++;
+    return 0;
+}
+
+struct doca_vnf gw_vnf = {
+    .doca_vnf_init = &gw_init,
+    .doca_vnf_process_pkt = &gw_handle_packet,
+    .doca_vnf_destroy = &gw_destroy
+};
+
+
+struct doca_vnf *gw_get_doca_vnf(void)
+{
+    return &gw_vnf;
+}
+

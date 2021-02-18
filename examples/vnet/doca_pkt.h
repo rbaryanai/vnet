@@ -49,6 +49,8 @@ struct doca_pkt_info {
     int     len;
 };
 
+int doca_parse_packet(uint8_t *data, int len, struct doca_pkt_info *pinfo);
+
 uint32_t doca_pinfo_outer_ipv4_dst(struct doca_pkt_info *pinfo);
 uint32_t doca_pinfo_outer_ipv4_src(struct doca_pkt_info *pinfo);
 uint32_t doca_pinfo_inner_ipv4_src(struct doca_pkt_info *pinfo);

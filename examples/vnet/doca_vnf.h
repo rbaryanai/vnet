@@ -3,10 +3,12 @@
 
 #include <stdint.h>
 
+struct doca_pkt_info;
+
 struct doca_vnf {
-    int (*doca_vnf_init)(void)
-
-}
-
+    int (*doca_vnf_init)(void);
+    int (*doca_vnf_process_pkt)(struct doca_pkt_info *pinfo);
+    int (*doca_vnf_destroy)(void);
+};
 
 #endif

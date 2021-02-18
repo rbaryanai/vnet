@@ -127,13 +127,12 @@ int doca_gw_port_stop(struct doca_gw_port *port)
 }
 
 
-struct doca_gw_pipeline *doca_gw_create_pipe(struct doca_gw_pipeline_cfg *cfg)
+struct doca_gw_pipeline *doca_gw_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_gw_error *err)
 {
     static uint32_t pipe_id = 1;
     struct doca_gw_pipeline *pl = malloc(sizeof(struct doca_gw_pipeline));
     memset(pl,0,sizeof(struct doca_gw_pipeline));
-
-
+    *err = *err;
 
     if (cfg != NULL && pl != NULL) {
         // allocate what is needed

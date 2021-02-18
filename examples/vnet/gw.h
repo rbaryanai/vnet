@@ -15,7 +15,6 @@ struct gw_port_cfg {
 
 int gw_init(void);
 
-int gw_parse_packet(uint8_t *data, int len, struct doca_pkt_info *pinfo);
 
 
 /**
@@ -123,5 +122,7 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ol_entry(struct doca_pkt_inf
 
 
 void gw_rm_pipeline_entry(struct doca_gw_pipelne_entry *entry);
+
+struct doca_vnf *gw_get_doca_vnf(void);
 
 #endif
