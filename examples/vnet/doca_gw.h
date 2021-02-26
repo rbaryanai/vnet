@@ -196,6 +196,12 @@ enum doca_fwd_tbl_type {
     DOCA_FWD_PORT
 };
 
+enum doca_rss_type {
+	DOCA_RSS_IP =  (1 << 0),
+	DOCA_RSS_UDP =  (1 << 1),
+	DOCA_RSS_TCP =  (1 << 2),
+};
+
 /**
  * @brief - forwarding configuration
  */

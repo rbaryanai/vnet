@@ -11,6 +11,8 @@
 #define MAX_ITEMS		12
 #define MAX_ACTIONS		12
 #define MAX_PIP_FLOWS	20
+#define MAX_FLOW_FRIO	3
+
 
 enum ACTION_DIRECTION {
 	DOCA_SRC = 1,
@@ -136,8 +138,10 @@ struct doca_dpdk_action_entry {
 };
 
 struct doca_gw_pipe_dpdk_flow {
+	uint16_t port_id;
 	uint8_t nb_items;
 	uint8_t nb_actions;
+	struct rte_flow_attr attr;
 	struct rte_flow_item items[MAX_ITEMS];
 	struct doca_dpdk_item_entry item_entry[MAX_ITEMS];
 	struct rte_flow_action actions[MAX_ACTIONS];
@@ -259,5 +263,12 @@ void doca_gw_init_dpdk(struct doca_gw_cfg *cfg);
 struct doca_gw_pipe_dpdk_flow*
 doca_gw_dpdk_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_gw_error *err);
 
+struct rte_flow*
+doca_gw_dpdk_pipe_create_flow(struct doca_gw_pipe_dpdk_flow *pipe,
+					struct doca_gw_match *match, struct doca_gw_actions *actions,
+					struct doca_gw_monitor *mon, struct doca_fwd_table_cfg *cfg,
+					struct doca_gw_error *err);
+
+int doca_gw_dpdk_init_port(uint16_t port_id);
 
 #endif

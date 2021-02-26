@@ -24,6 +24,9 @@ void doca_gw_init_dpdk(__rte_unused struct doca_gw_cfg *cfg)
 		memset(pipe_flow, 0x0, sizeof(struct doca_gw_pipe_dpdk_flow));
 		LIST_INSERT_HEAD(&pipe_flows.free_head, pipe_flow, free_list);
 	}
+	//todo, need remove to init_port 
+	doca_gw_dpdk_init_port(0);
+	doca_gw_dpdk_init_port(1);
 }
 
 /**
@@ -662,6 +665,215 @@ static int doca_gw_dpdk_build_action(struct doca_gw_pipeline_cfg *cfg,
 	return ret;
 }
 
+static void doca_gw_dpdk_build_end_action(struct doca_gw_pipe_dpdk_flow *pipe)
+{
+	struct rte_flow_action *action = &pipe->actions[pipe->nb_actions++];
+	action->type = RTE_FLOW_ACTION_TYPE_END;
+}
+
+static inline uint64_t
+doca_gw_get_rss_type(uint32_t rss_type)
+{
+	uint64_t rss_flags = 0;
+	if (rss_type && DOCA_RSS_IP)
+		rss_flags |= ETH_RSS_IP;
+	if (rss_type && DOCA_RSS_UDP)
+		rss_flags |= ETH_RSS_UDP;
+	if (rss_type && DOCA_RSS_TCP)
+		rss_flags |= ETH_RSS_TCP;
+	return rss_flags;
+}
+
+static int 
+doca_gw_dpdk_build_rss_action(struct doca_dpdk_action_entry *entry,
+									struct doca_fwd_table_cfg *fwd_cfg)
+{
+	int qidx;
+	struct rte_flow_action *action = entry->action;
+	struct doca_dpdk_action_rss_data *rss = &entry->action_data.rss;
+
+	rss->conf.queue_num = fwd_cfg->rss.num_queues;
+	for (qidx = 0; qidx < fwd_cfg->rss.num_queues; qidx++)
+		rss->queue[qidx] = fwd_cfg->rss.queues[qidx];
+	rss->conf.func = RTE_ETH_HASH_FUNCTION_DEFAULT;
+	rss->conf.types = doca_gw_get_rss_type(fwd_cfg->rss.rss_flags);
+	rss->conf.queue = rss->queue;
+	action->type = RTE_FLOW_ACTION_TYPE_RSS;
+	action->conf = &rss->conf;
+	return 0;
+}
+
+static int doca_gw_dpdk_build_fwd(struct doca_gw_pipe_dpdk_flow *pipe,
+									struct doca_fwd_table_cfg *fwd_cfg)
+{
+	struct doca_dpdk_action_entry *action_entry;
+
+	action_entry = &pipe->action_entry[pipe->nb_actions++];
+	switch(fwd_cfg->type) {
+		case DOCA_FWD_RSS:
+			doca_gw_dpdk_build_rss_action(action_entry, fwd_cfg);
+			break;
+		default:
+			return 1;
+	}
+	return 0;
+}
+
+static int
+doca_gw_dpdk_modify_pipe_match(struct doca_gw_pipe_dpdk_flow *pipe,
+	struct doca_gw_match *match)
+{
+	int idex, ret;
+	struct doca_dpdk_item_entry *item_entry;
+
+	for (idex = 0 ; idex < pipe->nb_items; idex++) {
+		item_entry = &pipe->item_entry[idex];
+		if (item_entry->modify_item == NULL)
+			continue;
+		ret = item_entry->modify_item(item_entry, match);
+		if (ret)
+			return ret;
+	}
+	return 0;
+}
+
+static int
+doca_gw_dpdk_modify_pipe_actions(struct doca_gw_pipe_dpdk_flow *pipe,
+	struct doca_gw_actions *actions)
+{
+	int idex, ret;
+	struct doca_dpdk_action_entry *action_entry;
+	
+	for (idex = 0 ; idex < pipe->nb_actions; idex++) {
+		action_entry = &pipe->action_entry[idex];
+		if (action_entry->modify_action == NULL)
+			continue;
+		ret = action_entry->modify_action(action_entry, actions);
+		if (ret)
+			return ret;
+	}
+	return 0;
+}
+
+static struct rte_flow*
+doca_gw_dpdk_create_flow(uint16_t port_id,
+		const struct rte_flow_attr *attr,
+		const struct rte_flow_item pattern[],
+		const struct rte_flow_action actions[])
+{
+	struct rte_flow *flow;
+	struct rte_flow_error err;
+
+	flow = rte_flow_create(port_id, attr, pattern, actions, &err);
+	if (!flow) {
+		DOCA_LOG_ERR("Port %u create flow fail, type %d message: %s\n",
+			port_id, err.type,
+			err.message ? err.message : "(no stated reason)");
+	}
+	return flow;
+}
+
+static int
+doca_gw_dpdk_free_flow(uint16_t port_id, struct rte_flow *flow)
+{
+	int ret;
+	struct rte_flow_error err;
+
+	ret = rte_flow_destroy(port_id, flow, &err);
+	if (ret) {
+		DOCA_LOG_ERR("Port %u free flow fail, type %d message: %s\n",
+			port_id, err.type,
+			err.message ? err.message : "(no stated reason)");	
+	}
+	return ret;
+}
+
+//create flow gourp 0 match eth action jump group 1
+static struct rte_flow*
+doca_gw_dpdk_create_root_jump(uint16_t port_id)
+{
+	struct rte_flow_attr attr;
+	struct rte_flow_item items[MAX_ITEMS];
+	struct rte_flow_action actions[MAX_ACTIONS];
+	struct rte_flow_action_jump jump;
+
+	memset(&attr, 0x0, sizeof(struct rte_flow_attr));
+	memset(items, 0x0, sizeof(items));
+	memset(actions, 0x0, sizeof(actions));
+	attr.group = 0;
+	attr.ingress = 1;
+	items[0].type = RTE_FLOW_ITEM_TYPE_ETH;
+	items[0].type = RTE_FLOW_ITEM_TYPE_END;
+	jump.group = 1;
+	actions[0].type = RTE_FLOW_ACTION_TYPE_JUMP;
+	actions[0].conf = &jump;
+	return doca_gw_dpdk_create_flow(port_id, &attr, items, actions);
+}
+
+/*default match, -> queue[0]*/
+static struct rte_flow*
+doca_gw_dpdk_create_def_queue(uint16_t port_id)
+{
+	struct rte_flow_attr attr;
+	struct rte_flow_item items[MAX_ITEMS];
+	struct rte_flow_action actions[MAX_ACTIONS];
+	struct rte_flow_action_queue queue;
+
+	memset(&attr, 0x0, sizeof(struct rte_flow_attr));
+	memset(items, 0x0, sizeof(items));
+	memset(actions, 0x0, sizeof(actions));	
+	attr.group = 1;
+	attr.ingress = 1;
+	attr.priority = MAX_FLOW_FRIO;
+	items[0].type = RTE_FLOW_ITEM_TYPE_ETH;
+	items[0].type = RTE_FLOW_ITEM_TYPE_END;
+	queue.index = 0;
+	actions[0].type = RTE_FLOW_ACTION_TYPE_QUEUE;
+	actions[0].conf = &queue;
+
+	return doca_gw_dpdk_create_flow(port_id, &attr, items, actions);
+}
+
+struct rte_flow *
+doca_gw_dpdk_pipe_create_flow(struct doca_gw_pipe_dpdk_flow *pipe,
+					struct doca_gw_match *match, struct doca_gw_actions *actions,
+					__rte_unused struct doca_gw_monitor *mon, struct doca_fwd_table_cfg *cfg,
+					__rte_unused struct doca_gw_error *err)
+{
+	if(match == NULL && actions == NULL && cfg == NULL)
+		return NULL;
+	if (doca_gw_dpdk_modify_pipe_match(pipe, match)) {
+		DOCA_LOG_ERR("modify pipe match item fail.\n");
+		return NULL;
+	}
+	if (doca_gw_dpdk_modify_pipe_actions(pipe, actions)) {
+		DOCA_LOG_ERR("modify pipe action fail.\n");
+		return NULL;
+	}
+	/*if different fwd action, need over write this action[x] ??*/
+	if (doca_gw_dpdk_build_fwd(pipe, cfg)) {
+		DOCA_LOG_ERR("build pipe fwd action fail.\n");
+		return NULL;
+	}
+	doca_gw_dpdk_build_end_action(pipe);
+	return doca_gw_dpdk_create_flow(pipe->port_id, &pipe->attr, pipe->items, pipe->actions);
+}
+
+/*todo , how to manager root/queue flows for one port.*/
+int
+doca_gw_dpdk_init_port(uint16_t port_id)
+{
+	struct rte_flow *root,*queue;
+
+	root = doca_gw_dpdk_create_root_jump(port_id);
+	if(root == NULL)
+		return -1;
+	queue = doca_gw_dpdk_create_def_queue(port_id);
+	if(queue == NULL)
+		return -1;
+	return 0;
+}
+
 /**
  * @brief: there is not create the pipeline flows templet?
  *    
@@ -680,6 +892,9 @@ doca_gw_dpdk_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_gw_error 
 		err->type = DOCA_ERROR_NOMORE_PIPE_RESOURCE;
 		return NULL;
 	}
+	//pipe_flow->port_id = (uint16_t)cfg->port->port_id;  
+	pipe_flow->attr.ingress = 1;
+	pipe_flow->attr.group = 1; // group 0 jump group 1
 	ret = doca_gw_dpdk_build_item(cfg->match, pipe_flow, err);
 	if (ret) {
 		err->type = DOCA_ERROR_PIPE_BUILD_IMTE_ERROR;

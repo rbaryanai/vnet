@@ -43,6 +43,7 @@ int doca_gw_init(struct doca_gw_cfg *cfg,struct doca_gw_error *err)
 
 struct doca_gw_pipelne_entry {
     int id;
+	void *pipe_entry;
 };
 
 /**
@@ -59,23 +60,35 @@ struct doca_gw_pipelne_entry *doca_gw_pipeline_add_entry(uint16_t pipe_queue,
 {
     static int  pipe_entry_id = 0;
     struct doca_gw_pipelne_entry *entry;
-    *mon = *mon;
-    *err = *err;
-    entry = (struct doca_gw_pipelne_entry *) malloc(sizeof(struct doca_gw_pipelne_entry));
-    memset(entry,0,sizeof(struct doca_gw_pipelne_entry));
-    entry->id = pipe_entry_id++;
-    if(fwd == NULL){
+
+    if(fwd == NULL) {
         DOCA_LOG_WARN("no forwading");
-        return entry;
+        return NULL;
     }
+    entry = (struct doca_gw_pipelne_entry *) malloc(sizeof(struct doca_gw_pipelne_entry));
+	if (entry == NULL)
+		return NULL;
+    memset(entry,0,sizeof(struct doca_gw_pipelne_entry));
+	entry->pipe_entry = doca_gw_dpdk_pipe_create_flow(pipeline->handler,
+		match, actions, mon, &fwd->cfg, err);
+	if (entry->pipe_entry == NULL) {
+		DOCA_LOG_INFO("create pip entry fail.\n");
+		goto free_pipe_entry;
+	}
+	entry->id = pipe_entry_id++;
     DOCA_LOG_INFO("offload[%d]: queue = %d port id=%p, match =%pi mod %p, fwd %d", entry->id, 
                   pipe_queue, pipeline, match, actions, fwd->id);
-    return entry;
+	return entry;
+free_pipe_entry:
+	free(entry);
+	return NULL;
 }
 
 int doca_gw_rm_entry(uint16_t pipe_queue, struct doca_gw_pipelne_entry *entry)
 {
     DOCA_LOG_INFO("(pipe %d) HW release id%d",pipe_queue, entry->id);
+	// TODO: how to get the port id?
+	//doca_gw_dpdk_free_flow(0, entry->pipe_entry);
     free(entry);
     return 0;
 }

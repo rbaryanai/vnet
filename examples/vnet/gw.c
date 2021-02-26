@@ -138,6 +138,7 @@ static struct doca_fwd_tbl *gw_build_rss_fwd(int n_queues)
 
     cfg.type = DOCA_FWD_RSS;
     cfg.rss.queues = queues;
+	cfg.rss.rss_flags = DOCA_RSS_IP | DOCA_RSS_UDP | DOCA_RSS_IP;
     cfg.rss.num_queues = n_queues;
     return doca_gw_create_fwd_tbl(&cfg);
 }
