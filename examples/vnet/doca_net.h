@@ -4,9 +4,6 @@
 #define DOCA_TCP  (0x6)
 #define DOCA_ETHER_ADDR_LEN (6)
 #define DOCA_VXLAN_DEFAULT_PORT (4789)
-#define DOCA_ETH_P_IP	(0x0800)
-#define DOCA_ETH_P_IPV6	(0x86DD)
-#define DOCA_ETH_P_8021Q	(0x8100)
 
 enum doca_gw_l3_type {
 	DOCA_NONE = 0,

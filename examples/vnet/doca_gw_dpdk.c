@@ -1,9 +1,11 @@
 #include <stdio.h>
 #include "doca_gw_dpdk.h"
 #include "doca_log.h"
+#include <rte_vxlan.h>
+#include <rte_ethdev.h>
 
 DOCA_LOG_MODULE(doca_gw_dpdk);
-	
+
 #define DOCA_GET_SRC_IP(match, type) ((type == OUTER_MATCH) ? match->out_src_ip : match->in_src_ip) 
 #define DOCA_GET_DST_IP(match, type) ((type == OUTER_MATCH) ? match->out_dst_ip : match->in_dst_ip)
 #define DOCA_GET_SRC_PORT(match, type) ((type == OUTER_MATCH) ? match->out_src_port : match->in_src_port)
@@ -44,6 +46,8 @@ doca_gw_dpdk_get_free_pipe(void)
 	memset(pipe_flow, 0x0, sizeof(struct doca_gw_pipe_dpdk_flow));
 	for (idx = 0 ; idx < MAX_ITEMS; idx++)
 		pipe_flow->item_entry[idx].item = &pipe_flow->items[idx];
+	for (idx = 0 ; idx < MAX_ACTIONS; idx++)
+		pipe_flow->action_entry[idx].action = &pipe_flow->actions[idx];
 	return pipe_flow;
 }
 
@@ -88,11 +92,9 @@ doca_gw_dpdk_build_eth_flow_item(struct doca_dpdk_item_entry *entry,
 		if (doca_is_mac_max(match->out_dst_mac))
 			entry->flags |= DOCA_MODIFY_DMAC;
 	}
-	if (match->vlan_id) {
-		spec->type = rte_cpu_to_be_16(DOCA_ETH_P_8021Q);
-		spec->has_vlan = 1; //will debug if this set is need.
-	} else
-		spec->type = rte_cpu_to_be_16(doca_gw_get_l3_protol(match, OUTER_MATCH));
+	if (match->vlan_id)
+		spec->has_vlan = 1;//will debug if this set is need.
+	spec->type = rte_cpu_to_be_16(doca_gw_get_l3_protol(match, OUTER_MATCH));
 	mask->type = UINT16_MAX;
 	flow_item->spec = spec;
 	flow_item->mask = mask;
@@ -301,13 +303,13 @@ static void doca_gw_dpdk_build_tcp_flow_item(struct doca_dpdk_item_entry *entry,
 	item->type = RTE_FLOW_ITEM_TYPE_TCP;
 	if (src_port) {
 		spec->hdr.src_port = rte_cpu_to_be_16(src_port);
-		mask->hdr.src_port = rte_cpu_to_be_16(UINT16_MAX);
+		mask->hdr.src_port = UINT16_MAX;
 		if (src_port == UINT16_MAX)
 			entry->flags |= DOCA_MODIFY_SPORT;
 	}
 	if (dst_port) {
 		spec->hdr.dst_port = rte_cpu_to_be_16(dst_port);
-		mask->hdr.dst_port = rte_cpu_to_be_16(UINT16_MAX);
+		mask->hdr.dst_port = UINT16_MAX;
 		if (dst_port == UINT16_MAX)
 			entry->flags |= DOCA_MODIFY_DPORT;
 	}
@@ -348,13 +350,13 @@ static void doca_gw_dpdk_build_udp_flow_item(struct doca_dpdk_item_entry *entry,
 	item->type = RTE_FLOW_ITEM_TYPE_UDP;
 	if (src_port) {
 		spec->hdr.src_port = rte_cpu_to_be_16(src_port);
-		mask->hdr.src_port = rte_cpu_to_be_16(UINT16_MAX);
+		mask->hdr.src_port = UINT16_MAX;
 		if (src_port == UINT16_MAX)
 			entry->flags |= DOCA_MODIFY_SPORT;
 	}
 	if (dst_port) {
 		spec->hdr.dst_port = rte_cpu_to_be_16(dst_port);
-		mask->hdr.dst_port = rte_cpu_to_be_16(UINT16_MAX);
+		mask->hdr.dst_port = UINT16_MAX;
 		if (dst_port == UINT16_MAX)
 			entry->flags |= DOCA_MODIFY_DPORT;
 	}
@@ -413,6 +415,252 @@ static int doca_gw_dpdk_build_item(struct doca_gw_match *match,
 	return 0;
 }
 
+/*
+  *currently, only for decap, only need the decap length
+  *for encap, will check how to implement.
+  	is encap buffer fixed or will be modifid by packet info?
+*/
+static void
+doca_gw_dpdk_build_ether_header(uint8_t **header, struct doca_gw_pipeline_cfg *cfg)
+{
+	struct rte_ether_hdr eth_hdr;
+	struct doca_gw_match *match = cfg->match;
+
+	memset(&eth_hdr, 0, sizeof(struct rte_ether_hdr));
+	if (!doca_is_mac_zero(match->out_dst_mac))
+		rte_ether_addr_copy((const struct rte_ether_addr*)match->out_src_mac, &eth_hdr.s_addr);
+	if (!doca_is_mac_zero(match->out_src_mac))
+		rte_ether_addr_copy((const struct rte_ether_addr*)match->out_src_mac, &eth_hdr.d_addr);
+	eth_hdr.ether_type = rte_cpu_to_be_16(doca_gw_get_l3_protol(match, OUTER_MATCH));
+	memcpy(*header, &eth_hdr, sizeof(eth_hdr));
+	*header += sizeof(eth_hdr);
+	if (match->vlan_id) {
+		struct rte_vlan_hdr vlan;
+		memset(&vlan, 0x0, sizeof(vlan));
+		memcpy(*header, &vlan, sizeof(vlan));
+		*header += sizeof(vlan);
+	}
+}
+
+static void
+doca_gw_dpdk_build_ipv4_header(uint8_t **header,
+			__rte_unused struct doca_gw_pipeline_cfg *cfg)
+{
+	struct rte_ipv4_hdr ipv4_hdr;
+
+	memset(&ipv4_hdr, 0, sizeof(struct rte_ipv4_hdr));
+	if (!doca_is_ip_zero(&cfg->match->out_src_ip))
+		ipv4_hdr.src_addr = rte_cpu_to_be_16(cfg->match->out_src_ip.a.ipv4_addr);
+	if (!doca_is_ip_zero(&cfg->match->out_dst_ip))
+		ipv4_hdr.dst_addr = rte_cpu_to_be_16(cfg->match->out_dst_ip.a.ipv4_addr);
+	if (!cfg->match->out_l4_type)
+		ipv4_hdr.next_proto_id = cfg->match->out_l4_type;
+	memcpy(*header, &ipv4_hdr, sizeof(ipv4_hdr));
+	*header += sizeof(ipv4_hdr); //todo, need check if has optional fields in iphdr
+}
+
+static void
+doca_gw_dpdk_build_udp_header(uint8_t **header, struct doca_gw_pipeline_cfg *cfg)
+{
+	struct rte_udp_hdr udp_hdr;
+
+	memset(&udp_hdr, 0, sizeof(struct rte_flow_item_udp));
+	if (cfg->match->out_src_port)
+		udp_hdr.src_port = rte_cpu_to_be_16(cfg->match->out_src_port);
+	if (cfg->match->out_dst_port)
+		udp_hdr.dst_port = rte_cpu_to_be_16(cfg->match->out_dst_port);
+	memcpy(*header, &udp_hdr, sizeof(udp_hdr));
+	*header += sizeof(udp_hdr);
+}
+
+static void
+doca_gw_dpdk_build_vxlan_header(uint8_t **header,
+		struct doca_gw_pipeline_cfg *cfg)
+{
+	struct rte_vxlan_hdr vxlan_hdr;
+
+	memset(&vxlan_hdr, 0, sizeof(struct rte_vxlan_hdr));
+	memcpy(&vxlan_hdr.vx_vni, (uint8_t*)(&cfg->match->tun.vxlan.tun_id), 3);
+	memcpy(*header, &vxlan_hdr, sizeof(vxlan_hdr));
+	*header += sizeof(vxlan_hdr);
+}
+
+struct endecap_layer doca_endecap_layers[] = {
+	{FILL_ETH_HDR,		doca_gw_dpdk_build_ether_header},
+	{FILL_IPV4_HDR,		doca_gw_dpdk_build_ipv4_header},
+	{FILL_UDP_HDR,		doca_gw_dpdk_build_udp_header},
+	{FILL_VXLAN_HDR,	doca_gw_dpdk_build_vxlan_header},
+};
+
+static void
+doca_gw_dpdk_build_endecap_data(uint8_t **header,
+			struct doca_gw_pipeline_cfg *cfg,
+			uint16_t flags)
+{
+	uint8_t idx;
+	struct endecap_layer *layer;
+	
+	for (idx = 0; idx < RTE_DIM(doca_endecap_layers); idx++) {
+		layer = &doca_endecap_layers[idx];
+		if (flags & layer->layer)
+			layer->fill_data(header, cfg);
+	}
+}
+
+static void doca_gw_dpdk_build_vxlandecap_action(struct doca_dpdk_action_entry *entry,
+									struct doca_gw_pipeline_cfg *cfg)
+{
+	uint8_t *header, decap_layer;
+	struct rte_flow_action *action = entry->action;
+	struct doca_dpdk_action_rawdecap_data *vxlan_decap;
+
+	decap_layer = FILL_ETH_HDR | FILL_IPV4_HDR | FILL_UDP_HDR | FILL_VXLAN_HDR;
+	vxlan_decap = &entry->action_data.rawdecap;
+	header = vxlan_decap->data;
+	vxlan_decap->conf.data = vxlan_decap->data;
+	doca_gw_dpdk_build_endecap_data(&header, cfg, decap_layer);
+	vxlan_decap->conf.size = header - vxlan_decap->data;
+	action->type = RTE_FLOW_ACTION_TYPE_RAW_DECAP;
+	action->conf = &vxlan_decap->conf;
+}
+
+static int doca_gw_dpdk_build_tunnel_action(struct doca_dpdk_action_entry *entry,
+									struct doca_gw_pipeline_cfg *cfg)
+{
+	struct doca_gw_match *match = cfg->match;
+
+	switch (match->tun.type) {
+		case DOCA_TUN_VXLAN:
+			doca_gw_dpdk_build_vxlandecap_action(entry, cfg);
+			return 0;
+		default:
+			return -1;
+	}
+}
+
+static int doca_gw_dpdk_modify_mac_action(struct doca_dpdk_action_entry *entry,
+									struct doca_gw_actions *pkt_action)
+{
+	uint8_t *mac_addr;
+	struct rte_flow_action *action = entry->action;
+	struct rte_flow_action_set_mac *set_mac = &entry->action_data.mac.set_mac;
+
+	mac_addr = action->type == RTE_FLOW_ACTION_TYPE_SET_MAC_SRC?
+		pkt_action->mod_src_mac : pkt_action->mod_dst_mac;
+	if (!doca_is_mac_zero(mac_addr))
+		memcpy(set_mac->mac_addr, mac_addr, DOCA_ETHER_ADDR_LEN);
+	return 0;
+}
+
+static void doca_gw_dpdk_build_mac_action(struct doca_dpdk_action_entry *entry,
+									struct doca_gw_pipeline_cfg *cfg, uint8_t type)
+{
+	struct rte_flow_action *action = entry->action;
+	uint8_t *mac_addr;
+	struct rte_flow_action_set_mac *set_mac = &entry->action_data.mac.set_mac;
+
+	mac_addr = (type == DOCA_SRC? cfg->actions->mod_src_mac : cfg->actions->mod_dst_mac);
+	memcpy(set_mac->mac_addr, mac_addr, DOCA_ETHER_ADDR_LEN);
+	action->conf = set_mac;
+	action->type = (type == DOCA_SRC? RTE_FLOW_ACTION_TYPE_SET_MAC_SRC : RTE_FLOW_ACTION_TYPE_SET_MAC_DST);
+	if (doca_is_mac_max(mac_addr))
+		entry->modify_action = doca_gw_dpdk_modify_mac_action;
+}
+
+static int doca_gw_dpdk_modify_ipv4_addr_action(struct doca_dpdk_action_entry *entry,
+									struct doca_gw_actions *pkt_action)
+{
+	struct doca_ip_addr *ip_addr;
+	struct rte_flow_action *action = entry->action;
+	struct rte_flow_action_set_ipv4 *ipv4 = &entry->action_data.ipv4.ipv4;
+
+	ip_addr = action->type == RTE_FLOW_ACTION_TYPE_SET_IPV4_SRC?
+		&pkt_action->mod_src_ip : &pkt_action->mod_dst_ip;
+	if (!doca_is_ip_zero(ip_addr))
+		ipv4->ipv4_addr = rte_cpu_to_be_32(ip_addr->a.ipv4_addr);
+	return 0;
+}
+
+static void doca_gw_dpdk_build_ipv4_addr_action(struct doca_dpdk_action_entry *entry,
+									struct doca_gw_pipeline_cfg *cfg, uint8_t type)
+{
+	struct rte_flow_action *action = entry->action;
+	struct doca_ip_addr *ip_addr;
+	struct rte_flow_action_set_ipv4 *ipv4 = &entry->action_data.ipv4.ipv4;
+
+	ip_addr = (type == DOCA_SRC? &cfg->actions->mod_src_ip : &cfg->actions->mod_dst_ip);
+	ipv4->ipv4_addr = rte_cpu_to_be_32(ip_addr->a.ipv4_addr);
+	action->type = (type == DOCA_SRC? RTE_FLOW_ACTION_TYPE_SET_IPV4_SRC : RTE_FLOW_ACTION_TYPE_SET_IPV4_DST);
+	action->conf = ipv4;
+	if (doca_is_ip_max(ip_addr))
+		entry->modify_action = doca_gw_dpdk_modify_ipv4_addr_action;
+}
+
+static int doca_gw_dpdk_modify_l4_port_action(struct doca_dpdk_action_entry *entry,
+									struct doca_gw_actions *pkt_action)
+{
+	uint16_t l4port;
+	struct rte_flow_action *action = entry->action;
+	struct rte_flow_action_set_tp *set_tp = &entry->action_data.l4port.l4port;
+
+	l4port = action->type == RTE_FLOW_ACTION_TYPE_SET_TP_SRC?
+		pkt_action->mod_src_port : pkt_action->mod_dst_port;
+	if (l4port)
+		set_tp->port = rte_cpu_to_be_16(l4port);
+	return 0;
+}
+
+static void doca_gw_dpdk_build_l4_port_action(struct doca_dpdk_action_entry *entry,
+									struct doca_gw_pipeline_cfg *cfg, uint8_t type)
+{
+	uint16_t l4port;
+	struct rte_flow_action *action = entry->action;
+	struct rte_flow_action_set_tp *set_tp = &entry->action_data.l4port.l4port;
+
+	l4port = (type == DOCA_SRC? cfg->actions->mod_src_port : cfg->actions->mod_dst_port);
+	set_tp->port = rte_cpu_to_be_16(l4port);
+	action->type = (type == DOCA_SRC? RTE_FLOW_ACTION_TYPE_SET_TP_SRC : RTE_FLOW_ACTION_TYPE_SET_TP_DST);
+	action->conf = set_tp;
+	if (l4port == UINT16_MAX)
+		entry->modify_action = doca_gw_dpdk_modify_l4_port_action;
+}
+
+static void doca_gw_dpdk_build_dec_ttl_action(struct doca_dpdk_action_entry *entry)
+{
+	struct rte_flow_action *action = entry->action;
+
+	action->type = RTE_FLOW_ACTION_TYPE_DEC_TTL;
+	action->conf = NULL;
+}
+
+static int doca_gw_dpdk_build_action(struct doca_gw_pipeline_cfg *cfg,
+					struct doca_gw_pipe_dpdk_flow *pipe_flow)
+{
+#define NEXT_ACTION (&pipe_flow->action_entry[idx++])
+	int ret = 0;
+	uint8_t idx = 0;
+	struct doca_gw_match *match = cfg->match;
+	struct doca_gw_actions *actions = cfg->actions;
+
+	if (actions->decap && match->tun.type)
+		ret = doca_gw_dpdk_build_tunnel_action(NEXT_ACTION, cfg);
+	if (!doca_is_mac_zero(actions->mod_src_mac))
+		doca_gw_dpdk_build_mac_action(NEXT_ACTION, cfg, DOCA_SRC);
+	if (!doca_is_mac_zero(actions->mod_dst_mac))
+		doca_gw_dpdk_build_mac_action(NEXT_ACTION, cfg, DOCA_DST);
+	if (!doca_is_ip_zero(&actions->mod_src_ip))
+		doca_gw_dpdk_build_ipv4_addr_action(NEXT_ACTION, cfg, DOCA_SRC);
+	if (!doca_is_ip_zero(&actions->mod_dst_ip))
+		doca_gw_dpdk_build_ipv4_addr_action(NEXT_ACTION, cfg, DOCA_DST);
+	if (actions->mod_src_port)
+		doca_gw_dpdk_build_l4_port_action(NEXT_ACTION, cfg, DOCA_SRC);
+	if (actions->mod_dst_port)
+		doca_gw_dpdk_build_l4_port_action(NEXT_ACTION, cfg, DOCA_DST);
+	if (actions->dec_ttl)
+		doca_gw_dpdk_build_dec_ttl_action(NEXT_ACTION);
+	pipe_flow->nb_actions = idx;
+	return ret;
+}
 
 /**
  * @brief: there is not create the pipeline flows templet?
@@ -437,8 +685,11 @@ doca_gw_dpdk_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_gw_error 
 		err->type = DOCA_ERROR_PIPE_BUILD_IMTE_ERROR;
 		goto free_pipe;
 	}
-	//doca_gw_build_action(cfg, pipe_flow);
-
+	ret = doca_gw_dpdk_build_action(cfg, pipe_flow);
+	if (ret) {
+		err->type = DOCA_ERROR_PIPE_BUILD_ACTION_ERROR;
+		goto free_pipe;
+	}
 	return pipe_flow;
 free_pipe:
 	doca_gw_dpdk_pipe_release(pipe_flow);
