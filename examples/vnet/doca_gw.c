@@ -62,6 +62,10 @@ struct doca_gw_pipelne_entry *doca_gw_pipeline_add_entry(uint16_t pipe_queue,
     entry = (struct doca_gw_pipelne_entry *) malloc(sizeof(struct doca_gw_pipelne_entry));
     memset(entry,0,sizeof(struct doca_gw_pipelne_entry));
     entry->id = pipe_entry_id++;
+    if(fwd == NULL){
+        DOCA_LOG_WARN("no forwading");
+        return entry;
+    }
     DOCA_LOG_INFO("offload[%d]: queue = %d port id=%p, match =%pi mod %p, fwd %d", entry->id, 
                   pipe_queue, pipeline, match, actions, fwd->id);
     return entry;

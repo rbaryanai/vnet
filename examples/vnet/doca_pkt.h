@@ -7,7 +7,7 @@
 #define GW_IPV4 (4)
 #define GW_IPV6 (6)
 #define GW_VXLAN_PORT (4789)
-#define GW_GTPU_PORT  (2152)
+#define DOCA_GTPU_PORT  (2152)
 
 enum APP_TUN_TYPE {
     APP_TUN_NONE,
@@ -41,11 +41,12 @@ struct doca_pkt_tun_format {
  *  classify it.
  */
 struct doca_pkt_info {
+    void *orig_data;         
     uint16_t orig_port_id;
-    struct doca_pkt_format   outer;
-    enum APP_TUN_TYPE       tun_type;
+    struct doca_pkt_format     outer;
+    enum APP_TUN_TYPE          tun_type;
     struct doca_pkt_tun_format tun;
-    struct doca_pkt_format   inner;
+    struct doca_pkt_format     inner;
     int     len;
 };
 
@@ -60,4 +61,7 @@ uint16_t doca_pinfo_inner_src_port(struct doca_pkt_info *pinfo);
 uint16_t doca_pinfo_inner_dst_port(struct doca_pkt_info *pinfo);
 uint16_t doca_pinfo_outer_src_port(struct doca_pkt_info *pinfo);
 uint16_t doca_pinfo_outer_dst_port(struct doca_pkt_info *pinfo);
+
+void doca_pinfo_decap(struct doca_pkt_info *pinfo);
+
 #endif

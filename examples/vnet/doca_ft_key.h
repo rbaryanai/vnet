@@ -21,8 +21,15 @@ struct doca_ft_key {
     uint32_t vni;
 };
 
+/**
+ * @brief - build table key according to parsed packet.
+ *
+ * @param m
+ * @param key
+ *
+ * @return 0 on success 
+ */
 int doca_ft_key_fill(struct doca_pkt_info *m, struct doca_ft_key *key);
-
 
 /**
  * @brief - compare keys

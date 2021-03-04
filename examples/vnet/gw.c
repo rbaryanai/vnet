@@ -22,27 +22,30 @@
 
 DOCA_LOG_MODULE(GW)
 
-#define GW_MAC_STR_FMT "%x:%x:%x:%x:%x:%x"
-#define GW_MAC_EXPAND(b) b[0],b[1],b[2],b[3],b[4],b[5]
-#define GW_IPV4_STR_FMT "%d:%d:%d:%d"
-#define GW_IPV4_EXPAND(b) b[0],b[1],b[2],b[3]
+#define SLB_IP_BUFF_SIZE 255
 #define GW_MAX_PORT_ID  (2)
 #define GW_NEXT_HOPS_NUM  (16)
 #define GW_NUM_OF_PORTS (2)
 #define GW_MAX_FLOWS (4096)
 
-static void gw_aged_flow_cb(struct doca_ft_user_ctx *ctx);
+#define GW_MASK_24 rte_cpu_to_be_32(0xff000000)
 
+static void gw_aged_flow_cb(struct doca_ft_user_ctx *ctx);
+static int gw_init_lb(int ret);
 
 struct gw_next_hop {
     uint32_t ip;
     uint32_t vni;
 };
 
+struct gw_ipv4_match {
+    uint32_t ip;
+    uint32_t mask;
+};
+
 struct gw_slb {
     uint32_t round_robin_idx;
     int size;
-    struct doca_fib_tbl *gw_fib_tbl;
     struct gw_next_hop nodes[GW_NEXT_HOPS_NUM];
 };
 
@@ -51,10 +54,13 @@ struct ex_gw {
 
     struct doca_gw_port *port0; 
     struct doca_gw_port *port1; 
+    struct gw_slb slb;                 /* Service Load Balancer */
+    struct doca_fib_tbl *gw_fib_tbl;   /* GW fib table */
 
-    // pipeline of overlay to underlay
+    /* for classificaiton purpose */
+    struct gw_ipv4_match m_ol_to_ol[GW_NUM_OF_PORTS];
+    /* pipelines */
     struct doca_gw_pipeline *p1_over_under[GW_NUM_OF_PORTS];
-
 };
 
 struct gw_entry {
@@ -66,16 +72,13 @@ struct gw_entry {
 
 struct ex_gw *gw_ins;
 
-
-
-
-static struct gw_slb *gw_slb;
 static void gw_slb_set_next_node(uint32_t *node_ip, uint32_t *node_vni) 
 {
-    gw_slb->round_robin_idx++;
-    gw_slb->round_robin_idx %= gw_slb->size;
-    *node_ip  = gw_slb->nodes[gw_slb->round_robin_idx].ip; 
-    *node_vni = gw_slb->nodes[gw_slb->round_robin_idx].vni; 
+    struct gw_slb *cslb = &gw_ins->slb;
+    cslb->round_robin_idx++;
+    cslb->round_robin_idx %= cslb->size;
+    *node_ip  = cslb->nodes[cslb->round_robin_idx].ip; 
+    *node_vni = cslb->nodes[cslb->round_robin_idx].vni; 
 }
 
 static uint16_t gw_slb_peer_port(uint16_t port_id)
@@ -212,57 +215,11 @@ static struct doca_gw_pipeline *gw_build_overlay_to_overlay(struct doca_gw_port 
     return doca_gw_create_pipe(&pipe_cfg,&err);
 }
 
-static int gw_print_eth(uint8_t *data,char *str, int len)
-{
-    int off = 0;
-    struct rte_ether_hdr *eth = (struct rte_ether_hdr *) data;
-
-    off += snprintf(str+off, len-off, "ETH DST:"GW_MAC_STR_FMT,GW_MAC_EXPAND(((uint8_t *)&eth->d_addr)));
-    off += snprintf(str+off, len-off, ", SRC:"GW_MAC_STR_FMT"\n",GW_MAC_EXPAND(((uint8_t *)&eth->s_addr)));
-    return off;
-}
-
-static int gw_print_ipv4(uint8_t *data,char *str, int len)
-{
-    int off = 0;
-    struct rte_ipv4_hdr *iphdr = (struct rte_ipv4_hdr *) data;
-    off += snprintf(str+off, len-off, "IP SRC:"GW_IPV4_STR_FMT,GW_IPV4_EXPAND(((uint8_t *)&iphdr->dst_addr)));
-    off += snprintf(str+off, len-off, ", IP DST:"GW_IPV4_STR_FMT"\n",GW_IPV4_EXPAND(((uint8_t *)&iphdr->src_addr)));
-    return off;
-}
-
-int gw_parse_pkt_str(struct doca_pkt_info *pinfo, char *str, int len)
-{
-    int off = 0;
-    if(!pinfo)
-        return -1;
-
-    off+=gw_print_eth(pinfo->outer.l2, str, len);
-    if ( pinfo->outer.l3_type != 4){
-        return off;
-    }
-
-    off+=gw_print_ipv4(pinfo->outer.l3, str + off, len - off);
-
-    switch(pinfo->tun_type){
-        case APP_TUN_VXLAN:
-            off+=snprintf(str+off,len-off,"TUNNEL:VXLAN\n");
-            break;
-        default:
-            break;
-
-    }
-    if ( pinfo->inner.l3_type != 4){
-        return off;
-    }
-
-    off+=gw_print_ipv4(pinfo->inner.l3, str + off, len - off);
-
-    return off;
-}
 /**
  * @brief - decides about the type of the packet.
- *  which pipeline should be exeuted
+ *  which pipeline should be exeuted.
+ *
+ *  if port 0 to port 1 and dst ip = 13.0.0.0/24 overlay to overlay
  *
  * @param pinfo
  *
@@ -271,6 +228,8 @@ int gw_parse_pkt_str(struct doca_pkt_info *pinfo, char *str, int len)
 enum gw_classification gw_classifiy_pkt(struct doca_pkt_info *pinfo)
 {
     struct rte_ipv4_hdr *ipv4hdr;
+
+    /* unexpected none tunneled packets are ignored */
     if (pinfo->tun_type != APP_TUN_VXLAN) {
         switch(pinfo->outer.l4_type) {
             case IPPROTO_TCP:
@@ -280,11 +239,11 @@ enum gw_classification gw_classifiy_pkt(struct doca_pkt_info *pinfo)
         }
         return GW_BYPASS;
     }
-
-    // ip prefix of 11.0.0.0/24 goes to underlay
+    
     ipv4hdr = (struct rte_ipv4_hdr *) pinfo->outer.l3;
-    if ((ipv4hdr->dst_addr & rte_cpu_to_be_32(0xff000000)) == rte_cpu_to_be_32(0x0b000000)){
-        DOCA_LOG_DBG("classified as overlay to underlay");
+    if ((ipv4hdr->dst_addr & gw_ins->m_ol_to_ol[pinfo->orig_port_id].mask) == 
+        gw_ins->m_ol_to_ol[pinfo->orig_port_id].ip) {
+        DOCA_LOG_INFO("classified as overlay to underlay");
         return GW_CLS_OL_TO_UL;
     }
 
@@ -318,7 +277,6 @@ struct doca_gw_pipeline *gw_init_ol_to_ol_pipeline(struct doca_gw_port *p)
 
     return pl;
 }
-
 
 struct doca_gw_port *gw_init_doca_port(struct gw_port_cfg *port_cfg)
 {
@@ -382,14 +340,14 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_inf
     actions.mod_dst_ip.a.ipv4_addr = (doca_pinfo_inner_ipv4_dst(pinfo) & rte_cpu_to_be_32(0x00ffffff))
                                     | rte_cpu_to_be_32(0x25000000); // change dst ip
 
-
     //TODO: add context
     return doca_gw_pipeline_add_entry(0, pipeline, &match, &actions, &monitor,
                                       sw_rss_fwd_tbl_port[pinfo->orig_port_id], &err);
 }
 
 
-struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ol_entry(struct doca_pkt_info *pinfo, struct doca_gw_pipeline *pipeline)
+struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ol_entry(struct doca_pkt_info *pinfo,
+                                                             struct doca_gw_pipeline *pipeline)
 {
     struct doca_gw_match match = {0};
     struct doca_gw_actions actions = {0};
@@ -422,7 +380,7 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ol_entry(struct doca_pkt_inf
     actions.encap.tun.type = DOCA_TUN_VXLAN;
 
     /* set chosen node mac address using fib tbl */
-    if (!doca_lookup_fib_tbl_entry(gw_slb->gw_fib_tbl,&actions.encap.in_dst_ip.a.ipv4_addr,
+    if (!doca_lookup_fib_tbl_entry(gw_ins->gw_fib_tbl,&actions.encap.in_dst_ip.a.ipv4_addr,
                                    actions.encap.dst_mac)) {
         DOCA_LOG_ERR("no mac address for ip ");
         return NULL;
@@ -441,7 +399,7 @@ void gw_rm_pipeline_entry(struct doca_gw_pipelne_entry *entry)
 }
 
 
-static int gw_alloc_instance(void)
+static int gw_create(void)
 {
     gw_ins = (struct ex_gw *) malloc(sizeof(struct ex_gw));
     if ( gw_ins == NULL ) {
@@ -451,8 +409,10 @@ static int gw_alloc_instance(void)
     
     memset(gw_ins, 0, sizeof(struct ex_gw));
     gw_ins->ft = doca_ft_create(GW_MAX_FLOWS , sizeof(struct gw_entry), &gw_aged_flow_cb);
-    if ( gw_ins->ft == NULL )
+    if ( gw_ins->ft == NULL ) {
+        DOCA_LOG_CRIT("failed to allocate FT");
         goto fail_init;
+    }
     
     return 0;
 fail_init:
@@ -464,68 +424,86 @@ fail_init:
     return -1;
 }
 
-static int ex_gw_init(void)
+static int gw_init_doca_ports_and_pipes(int ret)
 {
-
-    int ret = 0;
-
     struct gw_port_cfg cfg_port0 = { .n_queues = 4, .port_id = 0 };
     struct gw_port_cfg cfg_port1 = { .n_queues = 4, .port_id = 1 };
     struct doca_gw_error err = {0};
 
     struct doca_gw_cfg cfg = {GW_MAX_FLOWS};
-    gw_alloc_instance();
+    if (ret) {
+        return ret;
+    }
+    /* init doca framework */
     if (doca_gw_init(&cfg,&err)) { 
         DOCA_LOG_ERR("failed to init doca:%s",err.message);
         return -1;
     }
 
-    // adding ports
+    /* define doca ports */
     gw_ins->port0 = gw_init_doca_port(&cfg_port0);
     gw_ins->port1 = gw_init_doca_port(&cfg_port1);
 
     if (gw_ins->port0 == NULL || gw_ins->port1 == NULL) {
         DOCA_LOG_ERR("failed to start port %s",err.message);
-        return ret;
-    }
-
-    // overlay to unserlay pipeline
-    gw_ins->p1_over_under[0] = gw_init_ol_to_ul_pipeline(gw_ins->port0);
-    gw_ins->p1_over_under[1] = gw_init_ol_to_ul_pipeline(gw_ins->port1);
-
-    return ret;
-}
-
-int gw_init(void)
-{
-    int i;
-    ex_gw_init();
-    gw_slb = (struct gw_slb*) malloc(sizeof(struct gw_slb));
-    if (gw_slb == NULL) {
-        DOCA_LOG_ERR("failed to alloc slb");
         return -1;
     }
-    memset(gw_slb,0,sizeof(struct gw_slb));
-    gw_slb->size = GW_NEXT_HOPS_NUM; 
-    gw_slb->gw_fib_tbl = doca_create_fib_tbl(1024);
-    if (gw_slb->gw_fib_tbl == NULL) {
+
+    /* init classification */
+    /* overlay to overlay match */
+    gw_ins->m_ol_to_ol[0].ip = doca_inline_parse_ipv4("13.0.0.0");
+    gw_ins->m_ol_to_ol[0].mask = GW_MASK_24; 
+    gw_ins->m_ol_to_ol[1].ip = doca_inline_parse_ipv4("14.0.0.0");
+    gw_ins->m_ol_to_ol[1].mask = GW_MASK_24;  
+
+    /* init pipelines */
+    /* overlay to under lay pipeline */
+    gw_ins->p1_over_under[0] = gw_init_ol_to_ul_pipeline(gw_ins->port0);
+    gw_ins->p1_over_under[1] = gw_init_ol_to_ul_pipeline(gw_ins->port1);
+    return 0;
+}
+
+static int gw_init_lb(int ret)
+{
+    int i;
+
+    /* allready failed before stop init */
+    if(ret) {
+        return ret;
+    } 
+
+    gw_ins->slb.size = GW_NEXT_HOPS_NUM; 
+    gw_ins->gw_fib_tbl = doca_create_fib_tbl(1024);
+    if (gw_ins->gw_fib_tbl == NULL) {
         DOCA_LOG_ERR("failed to alloc slb fib tbl");
         return -1;
     }
  
-    for( i = 0; i < gw_slb->size ; i++){ 
-#define SLB_IP_BUFF_SIZE 255
+    for( i = 0; i < gw_ins->slb.size ; i++){ 
         uint32_t ip;
         char ip_str[SLB_IP_BUFF_SIZE];
         snprintf(ip_str,0,"13.0.0.%d",i);
         uint8_t mac[6] = {0x1,0x2,0x3,0x40,0x5,0x6};
         mac[5] = 0x6 + i;
         ip = doca_inline_parse_ipv4(ip_str);
-        doca_add_fib_tbl_entry(gw_slb->gw_fib_tbl, &ip,mac);
-        gw_slb->nodes[i].ip = ip;
+        doca_add_fib_tbl_entry(gw_ins->gw_fib_tbl, &ip,mac);
+        gw_ins->slb.nodes[i].ip = ip;
     }
     return 0;
 }
+
+int gw_init(void)
+{
+
+    int ret = 0;
+    ret |= gw_create();
+    ret |= gw_init_lb(ret);
+    ret |= gw_init_doca_ports_and_pipes(ret);
+
+    return ret;
+}
+
+
 
 static int gw_destroy(void)
 {
@@ -555,7 +533,8 @@ int gw_handle_new_flow(struct doca_pkt_info *pinfo, struct doca_ft_user_ctx **ct
     
     switch(cls) {
         case GW_CLS_OL_TO_UL:
-            if (!doca_ft_add_new(gw_ins->ft, pinfo,ctx)) {
+            DOCA_LOG_INFO("adding entry");
+            if (!doca_ft_add_new(gw_ins->ft, pinfo, ctx)) {
                 DOCA_LOG_DBG("failed create new entry");
                 return -1;
             }
@@ -617,9 +596,7 @@ struct doca_vnf gw_vnf = {
     .doca_vnf_destroy = &gw_destroy
 };
 
-
 struct doca_vnf *gw_get_doca_vnf(void)
 {
     return &gw_vnf;
 }
-

@@ -62,6 +62,13 @@ struct doca_ft {
     struct doca_ft_bucket buckets[0];
 };
 
+static
+void doca_ft_update_expiration(struct doca_ft_entry *e)
+{
+    uint64_t t  =  rte_rdtsc();
+    uint64_t sec = rte_get_timer_hz();
+    e->expiration = t + sec*10;
+}
 
 static void * doca_ft_aging_main(void *void_ptr)
 {
@@ -182,9 +189,6 @@ struct doca_ft *doca_ft_create(int size, uint32_t user_data_size, void (*gw_agin
     return ft;
 }
 
-
-
-
 static
 struct doca_ft_entry *_doca_ft_find(struct doca_ft *ft, struct doca_ft_key *key)
 {
@@ -199,6 +203,7 @@ struct doca_ft_entry *_doca_ft_find(struct doca_ft *ft, struct doca_ft_key *key)
     first = &ft->buckets[idx].head;
     LIST_FOREACH(node, first, next) {
         if (doca_ft_key_equal(&node->key, key)){
+            doca_ft_update_expiration(node);
             return node;
         }
     }
@@ -221,6 +226,8 @@ bool doca_ft_find(struct doca_ft *ft, struct doca_pkt_info *pinfo,
     return true; 
 }
 
+
+
 bool doca_ft_add_new(struct doca_ft *ft, struct doca_pkt_info *pinfo,struct doca_ft_user_ctx **ctx)
 {
     uint32_t hash;
@@ -228,26 +235,24 @@ bool doca_ft_add_new(struct doca_ft *ft, struct doca_pkt_info *pinfo,struct doca
     struct doca_ft_key key = {0};
     struct doca_ft_entry *new_e;
     struct doca_ft_entry_head *first;
-    uint64_t sec = rte_get_timer_hz();
-    uint64_t t  =  rte_rdtsc();
 
     if(!ft){
         return false;
     }
 
     if (doca_ft_key_fill(pinfo, &key)){
-        fprintf(stderr,"failed on key\n");
+        DOCA_LOG_DBG("failed on key");
        return false;
     }
 
     new_e = malloc(ft->cfg.entry_size);
     if (new_e == NULL) {
-        printf("error:oom\n");
+        DOCA_LOG_WARN("oom");
         return false;
     }
 
     memset(new_e,0,ft->cfg.entry_size);
-    new_e->expiration = t + sec*10;
+    doca_ft_update_expiration(new_e);
     new_e->user_ctx.fid = ft->fid_ctr++;
     *ctx = &new_e->user_ctx;
 
@@ -261,7 +266,6 @@ bool doca_ft_add_new(struct doca_ft *ft, struct doca_pkt_info *pinfo,struct doca
     LIST_INSERT_HEAD(first, new_e, next);
     rte_spinlock_unlock(&ft->buckets[idx].lock);
     ft->stats.add++;
-    DOCA_LOG_DBG("added on index %d",idx);
 
     doca_gauge_add_sample(ft->cps_gauge, 1);
     return true;
@@ -291,10 +295,8 @@ int _doca_ft_destory_flow(struct doca_ft *ft, struct doca_ft_key *key)
 int
 doca_ft_destory_flow(struct doca_ft *ft, struct doca_ft_key *key)
 {
-    _doca_ft_destory_flow(ft,key);
-    return 0;
+    return _doca_ft_destory_flow(ft,key);
 }
-
 
 void doca_ft_destroy(struct doca_ft *ft)
 {

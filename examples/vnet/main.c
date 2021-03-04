@@ -63,6 +63,14 @@ static inline uint64_t gw_get_time_usec(void)
     return tv.tv_sec * 1000000 + tv.tv_usec;
 }
 
+static void vnf_adjust_mbuf(struct rte_mbuf *m, struct doca_pkt_info *pinfo)
+{
+    int diff = pinfo->outer.l2 - VNF_PKT_L2(m);
+    if (diff > 0) {
+        //rte_pktmbuf_adj(m,diff);
+    }
+    //rte_pktmbuf_adj(m,diff);
+}
 
 static void
 gw_process_pkts(void)
@@ -80,7 +88,7 @@ gw_process_pkts(void)
                     nb_rx = rte_eth_rx_burst(port_id, i, mbufs, VNF_RX_BURST_SIZE);
                     if (nb_rx) {
                         for (j = 0; j < nb_rx; j++) {
-                            memset(&pinfo,0, sizeof(struct doca_pkt_info)); 
+                            memset(&pinfo,0, sizeof(struct doca_pkt_info));
                             if(!doca_parse_packet(VNF_PKT_L2(mbufs[j]),VNF_PKT_LEN(mbufs[j]), &pinfo)){
                                 pinfo.orig_port_id = mbufs[j]->port;
                                 if (pinfo.outer.l3_type == 4) {
@@ -89,6 +97,7 @@ gw_process_pkts(void)
                                     if(ph) {
                                         doca_pcap_write(ph,pinfo.outer.l2, pinfo.len, gw_get_time_usec(), 0); 
                                     }
+                                    vnf_adjust_mbuf(mbufs[j], &pinfo);
                                     //gw_handle_packet(&pinfo);
                                 }
                             }

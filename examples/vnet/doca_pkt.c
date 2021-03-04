@@ -85,6 +85,7 @@ int doca_parse_pkt_format(uint8_t *data, int len, bool l2, struct doca_pkt_forma
     int l4_off = 0;
     int l7_off = 0;
     
+    fmt->l2 = data;
     if (l2) {
         eth = (struct rte_ether_hdr *) data;
         fmt->l2 = data;
@@ -189,6 +190,7 @@ static int doca_parse_is_tun(struct doca_pkt_info *pinfo)
                     return sizeof(struct rte_vxlan_gpe_hdr) + sizeof(struct rte_udp_hdr);
                 }
             break;
+            case DOCA_GTPU_PORT:
             default:
                 return 0;
         }
@@ -215,10 +217,9 @@ int doca_parse_packet(uint8_t *data, int len, struct doca_pkt_info *pinfo)
     // parse outer
 
     if (!pinfo) {
-        fprintf(stderr,"pinfo =%p\n", pinfo);
+        DOCA_LOG_ERR("pinfo =%p\n", pinfo);
         return -1;
     }
-
 
     if (doca_parse_pkt_format(data, len, true, &pinfo->outer)) {
         return -1;
@@ -247,6 +248,26 @@ int doca_parse_packet(uint8_t *data, int len, struct doca_pkt_info *pinfo)
     }
 
     return 0;
+}
+
+void doca_pinfo_decap(struct doca_pkt_info *pinfo)
+{
+    switch(pinfo->tun_type){
+        case APP_TUN_GRE:
+            DOCA_LOG_ERR("decap for GRE not supported");
+            break;
+        case APP_TUN_VXLAN:
+            pinfo->outer.l2 = pinfo->inner.l2;
+            pinfo->outer.l3 = pinfo->inner.l3;
+            pinfo->outer.l4 = pinfo->inner.l4;
+            pinfo->outer.l7 = pinfo->inner.l7;
+            pinfo->tun_type = APP_TUN_NONE;
+            break;
+
+        default:
+            break;
+    }
+
 }
 
 
