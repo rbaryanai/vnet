@@ -47,7 +47,7 @@ DOCA_LOG_MODULE(main)
 static volatile bool force_quit;
 
 static uint16_t port_id;
-static uint16_t nr_queues = 2;
+uint16_t nr_queues = 2;
 static const char *pcap_file_name = "/var/opt/rbaryanai/vnet/build/examples/vnet/test.pcap";
 static struct doca_pcap_hander *ph;
 
