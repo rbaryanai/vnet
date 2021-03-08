@@ -24,7 +24,9 @@ struct doca_ft_user_ctx {
  *
  * @return pointer to new allocated flow table or NULL
  */
-struct doca_ft *doca_ft_create(int size, uint32_t user_data_size, void (*gw_aging_cb)(struct doca_ft_user_ctx *ctx));
+struct doca_ft *doca_ft_create(int size, uint32_t user_data_size, 
+                               void (*gw_aging_cb)(struct doca_ft_user_ctx *ctx),
+                               void (*gw_aging_hw_cb)(void));
 
 void doca_ft_destroy(struct doca_ft *ft);
 

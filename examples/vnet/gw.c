@@ -27,10 +27,22 @@ DOCA_LOG_MODULE(GW)
 #define GW_NEXT_HOPS_NUM  (16)
 #define GW_NUM_OF_PORTS (2)
 #define GW_MAX_FLOWS (4096)
+#define GW_MAX_PIPE_CLS (16)
 
 #define GW_MASK_24 rte_cpu_to_be_32(0xff000000)
 
+#define GW_FILL_MATCH(ENTRY, IP, IPV, TUN, MASK, CLS) \
+                                             ENTRY.ip = doca_inline_parse_ipv4(IP); \
+                                             ENTRY.mask = MASK; \
+                                             ENTRY.used = true; \
+                                             ENTRY.cls = CLS; \
+                                             ENTRY.ipv = IPV; \
+                                             ENTRY.tun = TUN;
+
+#define GW_MATCH_EQUAL(ENTRY, P)  ((P->dst_addr & ENTRY.mask) == ENTRY.ip)
+
 static void gw_aged_flow_cb(struct doca_ft_user_ctx *ctx);
+static void gw_hw_aging_cb(void);
 static int gw_init_lb(int ret);
 
 struct gw_next_hop {
@@ -39,8 +51,12 @@ struct gw_next_hop {
 };
 
 struct gw_ipv4_match {
+    bool     used;
+    uint16_t tun;
+    uint8_t  ipv;
     uint32_t ip;
     uint32_t mask;
+    enum gw_classification cls;
 };
 
 struct gw_slb {
@@ -58,20 +74,29 @@ struct ex_gw {
     struct doca_fib_tbl *gw_fib_tbl;   /* GW fib table */
 
     /* for classificaiton purpose */
-    struct gw_ipv4_match m_ol_to_ol[GW_NUM_OF_PORTS];
+    struct gw_ipv4_match cls_match[GW_MAX_PIPE_CLS];
     /* pipelines */
-    struct doca_gw_pipeline *p1_over_under[GW_NUM_OF_PORTS];
+    struct doca_gw_pipeline *p_over_under[GW_NUM_OF_PORTS];
+    struct doca_gw_pipeline *p_ol_ol[GW_NUM_OF_PORTS];
 };
 
 struct gw_entry {
     int total_pkts;
     int total_bytes;
+    enum gw_classification cls;
     bool is_hw;
     struct doca_gw_pipelne_entry *hw_entry;
 };
 
 struct ex_gw *gw_ins;
 
+/**
+ * @brief - load balancing between nodes.
+ *          policy it round robin
+ *
+ * @param node_ip
+ * @param node_vni
+ */
 static void gw_slb_set_next_node(uint32_t *node_ip, uint32_t *node_vni) 
 {
     struct gw_slb *cslb = &gw_ins->slb;
@@ -99,8 +124,7 @@ struct doca_fwd_tbl *gw_build_port_fwd(int port_id)
 }
 
 
-static
-struct doca_fwd_tbl *gw_build_rss_fwd(int n_queues)
+static struct doca_fwd_tbl *gw_build_rss_fwd(int n_queues)
 {
     int i;
     struct doca_fwd_table_cfg cfg = {0};
@@ -118,11 +142,20 @@ struct doca_fwd_tbl *gw_build_rss_fwd(int n_queues)
     return doca_gw_create_fwd_tbl(&cfg);
 }
 
-static void gw_build_underlay_overlay_match(struct doca_gw_match *match)
+/**
+ * @brief - define a template that match on the following:
+ *     
+ *     vxlan packet on default port (and ipv4)
+ *     some fields are dont care, such as src port and src ip
+ *     of the vxlan.
+ *
+ * @param match
+ */
+static void gw_build_match_tun_and_5tuple(struct doca_gw_match *match)
 {
     match->out_dst_ip.a.ipv4_addr = 0xffffffff;
     match->out_dst_ip.type = DOCA_IPV4;
-    match->out_l3_type = DOCA_IPV4;
+    match->out_l4_type = DOCA_IPV4;
     match->out_dst_port = rte_be_to_cpu_16(4789); // VXLAN (change to enum/define)
 
 
@@ -133,7 +166,7 @@ static void gw_build_underlay_overlay_match(struct doca_gw_match *match)
     match->in_dst_ip.a.ipv4_addr = 0xffffffff;
     match->in_src_ip.a.ipv4_addr = 0xffffffff;
     match->in_src_ip.type = DOCA_IPV4;
-    match->in_l3_type = 0xff;
+    match->in_l4_type = 0xff;
 
     match->in_src_port = 0xffff;
     match->in_dst_port = 0xffff;
@@ -148,7 +181,7 @@ static void gw_build_decap_inner_modify_actions(struct doca_gw_actions *actions)
 
 static void gw_build_encap_actions(struct doca_gw_actions *actions)
 {
-    actions->encap.in_src_ip.a.ipv4_addr = doca_inline_parse_ipv4("13.0.0.13");;
+    actions->encap.in_src_ip.a.ipv4_addr = doca_inline_parse_ipv4("13.0.0.13");
     actions->encap.in_dst_ip.a.ipv4_addr = 0xffffffff;
     actions->encap.tun.type = DOCA_TUN_VXLAN;
     memset(actions->encap.src_mac,0xff, sizeof(actions->encap.src_mac));
@@ -162,7 +195,18 @@ static void gw_fill_monior(struct doca_gw_monitor *monitor)
     monitor->count = true;
 }
 
-static struct doca_gw_pipeline *gw_build_underlay_overlay(struct doca_gw_port *port)
+/**
+ * @brief - build the underlay to overlay pipeline  
+ *          match: (ip,tun),(5 tuple)
+ *          actions: - decap
+ *                   - change dst ip
+ *          monitor: - count
+ *
+ * @param port
+ *
+ * @return 
+ */
+static struct doca_gw_pipeline *gw_build_ul_ol(struct doca_gw_port *port)
 {
     // configure a pipeline. values of 0 means the parameters
     // will not be used. mask means for each entry a value should be provided
@@ -174,7 +218,7 @@ static struct doca_gw_pipeline *gw_build_underlay_overlay(struct doca_gw_port *p
     struct doca_gw_actions actions = {0};
     struct doca_gw_monitor monitor = {0};
 
-    gw_build_underlay_overlay_match(&match);
+    gw_build_match_tun_and_5tuple(&match);
     gw_build_decap_inner_modify_actions(&actions);
     gw_fill_monior(&monitor);
 
@@ -188,7 +232,18 @@ static struct doca_gw_pipeline *gw_build_underlay_overlay(struct doca_gw_port *p
     return doca_gw_create_pipe(&pipe_cfg,&err);
 }
 
-static struct doca_gw_pipeline *gw_build_overlay_to_overlay(struct doca_gw_port *port)
+/**
+ * @brief match:   on tunnel dst + inner 5-tuple
+ *        actions: decap
+ *                 change destination ip
+ *                 encap (according to serving node)
+ *                 monitor count
+ *
+ * @param port
+ *
+ * @return 
+ */
+static struct doca_gw_pipeline *gw_build_ol_to_ol(struct doca_gw_port *port)
 {   
     // configure a pipeline. values of 0 means the parameters
     // will not be used. mask means for each entry a value should be provided
@@ -200,7 +255,7 @@ static struct doca_gw_pipeline *gw_build_overlay_to_overlay(struct doca_gw_port 
     struct doca_gw_actions actions = {0};
     struct doca_gw_monitor monitor = {0};
 
-    gw_build_underlay_overlay_match(&match);
+    gw_build_match_tun_and_5tuple(&match);
     gw_build_decap_inner_modify_actions(&actions);
     gw_build_encap_actions(&actions);
     gw_fill_monior(&monitor);
@@ -228,6 +283,7 @@ static struct doca_gw_pipeline *gw_build_overlay_to_overlay(struct doca_gw_port 
 enum gw_classification gw_classifiy_pkt(struct doca_pkt_info *pinfo)
 {
     struct rte_ipv4_hdr *ipv4hdr;
+    int i = 0;
 
     /* unexpected none tunneled packets are ignored */
     if (pinfo->tun_type != APP_TUN_VXLAN) {
@@ -241,41 +297,13 @@ enum gw_classification gw_classifiy_pkt(struct doca_pkt_info *pinfo)
     }
     
     ipv4hdr = (struct rte_ipv4_hdr *) pinfo->outer.l3;
-    if ((ipv4hdr->dst_addr & gw_ins->m_ol_to_ol[pinfo->orig_port_id].mask) == 
-        gw_ins->m_ol_to_ol[pinfo->orig_port_id].ip) {
-        DOCA_LOG_INFO("classified as overlay to underlay");
-        return GW_CLS_OL_TO_UL;
+    for ( i = 0 ; i < GW_MAX_PIPE_CLS && gw_ins->cls_match[i].used ; i++) {
+        if (GW_MATCH_EQUAL(gw_ins->cls_match[i], ipv4hdr)) {
+                return gw_ins->cls_match[i].cls;
+        }
     }
 
     return GW_CLS_OL_TO_OL;
-}
-
-struct doca_gw_pipeline *gw_init_ol_to_ul_pipeline(struct doca_gw_port *p)
-{
-    struct doca_gw_pipeline *pl;
-
-    pl = gw_build_underlay_overlay(p);
-
-    if ( pl == NULL) {
-        DOCA_LOG_ERR("failed to allocate pipeline\n");
-        return pl;
-    }
-
-    return pl;
-}
-
-struct doca_gw_pipeline *gw_init_ol_to_ol_pipeline(struct doca_gw_port *p)
-{
-    struct doca_gw_pipeline *pl;
-
-    pl = gw_build_overlay_to_overlay(p);
-
-    if ( pl == NULL) {
-        DOCA_LOG_ERR("failed to allocate pipeline\n");
-        return pl;
-    }
-
-    return pl;
 }
 
 struct doca_gw_port *gw_init_doca_port(struct gw_port_cfg *port_cfg)
@@ -313,6 +341,14 @@ struct doca_gw_port *gw_init_doca_port(struct gw_port_cfg *port_cfg)
     return port;
 }
 
+/**
+ * @brief - create entry on overlay to underlay pipeline
+ *
+ * @param pinfo
+ * @param pipeline
+ *
+ * @return 
+ */
 struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_info *pinfo,
                                                              struct doca_gw_pipeline *pipeline)
 {
@@ -333,7 +369,7 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_inf
     /* exact inner 5-tuple */
     match.in_dst_ip.a.ipv4_addr = doca_pinfo_inner_ipv4_dst(pinfo);
     match.in_src_ip.a.ipv4_addr = doca_pinfo_inner_ipv4_src(pinfo);
-    match.in_l3_type = pinfo->inner.l4_type;
+    match.in_l4_type = pinfo->inner.l4_type;
     match.in_src_port = doca_pinfo_inner_src_port(pinfo);
     match.in_dst_port = doca_pinfo_inner_dst_port(pinfo);
 
@@ -366,7 +402,7 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ol_entry(struct doca_pkt_inf
     /* exact inner 5-tuple */
     match.in_dst_ip.a.ipv4_addr = doca_pinfo_inner_ipv4_dst(pinfo);
     match.in_src_ip.a.ipv4_addr = doca_pinfo_inner_ipv4_src(pinfo);
-    match.in_l3_type = pinfo->inner.l4_type;
+    match.in_l4_type = pinfo->inner.l4_type;
     match.in_src_port = doca_pinfo_inner_src_port(pinfo);
     match.in_dst_port = doca_pinfo_inner_dst_port(pinfo);
 
@@ -392,12 +428,10 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ol_entry(struct doca_pkt_inf
             fwd_tbl_port[gw_slb_peer_port(pinfo->orig_port_id)], &err);
 }
 
-
 void gw_rm_pipeline_entry(struct doca_gw_pipelne_entry *entry)
 {
    doca_gw_rm_entry(0,entry);
 }
-
 
 static int gw_create(void)
 {
@@ -408,7 +442,8 @@ static int gw_create(void)
     }
     
     memset(gw_ins, 0, sizeof(struct ex_gw));
-    gw_ins->ft = doca_ft_create(GW_MAX_FLOWS , sizeof(struct gw_entry), &gw_aged_flow_cb);
+    gw_ins->ft = doca_ft_create(GW_MAX_FLOWS , sizeof(struct gw_entry), 
+                                &gw_aged_flow_cb, &gw_hw_aging_cb);
     if ( gw_ins->ft == NULL ) {
         DOCA_LOG_CRIT("failed to allocate FT");
         goto fail_init;
@@ -449,17 +484,26 @@ static int gw_init_doca_ports_and_pipes(int ret)
         return -1;
     }
 
+    /* TBD: this should be read from file */
     /* init classification */
     /* overlay to overlay match */
-    gw_ins->m_ol_to_ol[0].ip = doca_inline_parse_ipv4("13.0.0.0");
-    gw_ins->m_ol_to_ol[0].mask = GW_MASK_24; 
-    gw_ins->m_ol_to_ol[1].ip = doca_inline_parse_ipv4("14.0.0.0");
-    gw_ins->m_ol_to_ol[1].mask = GW_MASK_24;  
+    GW_FILL_MATCH(gw_ins->cls_match[0],"13.0.0.0",4,APP_TUN_VXLAN,
+                                       GW_MASK_24, GW_CLS_OL_TO_OL);
+    GW_FILL_MATCH(gw_ins->cls_match[1],"14.0.0.0",4,APP_TUN_VXLAN,
+                                       GW_MASK_24, GW_CLS_OL_TO_OL);
+    GW_FILL_MATCH(gw_ins->cls_match[2],"15.0.0.0",4,APP_TUN_VXLAN,
+                                       GW_MASK_24, GW_CLS_OL_TO_UL);
+    GW_FILL_MATCH(gw_ins->cls_match[3],"0.0.0.0",4,APP_TUN_NONE,
+                                       0, GW_BYPASS_L4);
 
     /* init pipelines */
     /* overlay to under lay pipeline */
-    gw_ins->p1_over_under[0] = gw_init_ol_to_ul_pipeline(gw_ins->port0);
-    gw_ins->p1_over_under[1] = gw_init_ol_to_ul_pipeline(gw_ins->port1);
+    gw_ins->p_over_under[0] = gw_build_ul_ol(gw_ins->port0);
+    gw_ins->p_over_under[1] = gw_build_ul_ol(gw_ins->port1);
+
+    gw_ins->p_ol_ol[0] = gw_build_ol_to_ol(gw_ins->port0);
+    gw_ins->p_ol_ol[1] = gw_build_ol_to_ol(gw_ins->port1);
+
     return 0;
 }
 
@@ -479,6 +523,8 @@ static int gw_init_lb(int ret)
         return -1;
     }
  
+    // TBD: Load Balance should be read from file
+    // or have a CLI
     for( i = 0; i < gw_ins->slb.size ; i++){ 
         uint32_t ip;
         char ip_str[SLB_IP_BUFF_SIZE];
@@ -503,8 +549,7 @@ int gw_init(void)
     return ret;
 }
 
-
-
+//TBD: clean all
 static int gw_destroy(void)
 {
     return 0;
@@ -524,22 +569,31 @@ void gw_aged_flow_cb(struct doca_ft_user_ctx *ctx)
     }
 }
 
+/**
+ * @brief - when called from FT,
+ *  aging context can be used here to clean HW flows.
+ */
+static void gw_hw_aging_cb(void)
+{
+
+}
+
 static
 int gw_handle_new_flow(struct doca_pkt_info *pinfo, struct doca_ft_user_ctx **ctx)
     
 {
-    struct gw_entry *entry;
+    struct gw_entry *entry = NULL;
     enum gw_classification cls = gw_classifiy_pkt(pinfo);
     
     switch(cls) {
         case GW_CLS_OL_TO_UL:
-            DOCA_LOG_INFO("adding entry");
+            DOCA_LOG_INFO("adding entry ol to ul");
             if (!doca_ft_add_new(gw_ins->ft, pinfo, ctx)) {
                 DOCA_LOG_DBG("failed create new entry");
                 return -1;
             }
             entry = (struct gw_entry *) &(*ctx)->data[0];
-            entry->hw_entry = gw_pipeline_add_ol_to_ul_entry(pinfo,gw_ins->p1_over_under[pinfo->orig_port_id]);
+            entry->hw_entry = gw_pipeline_add_ol_to_ul_entry(pinfo,gw_ins->p_over_under[pinfo->orig_port_id]);
             if (entry->hw_entry == NULL) {
                 DOCA_LOG_DBG("failed to offload");
                 return -1;
@@ -547,12 +601,13 @@ int gw_handle_new_flow(struct doca_pkt_info *pinfo, struct doca_ft_user_ctx **ct
             entry->is_hw = true;
             break;
         case GW_CLS_OL_TO_OL:
+            DOCA_LOG_INFO("adding entry ol to ol");
             if (!doca_ft_add_new(gw_ins->ft, pinfo,ctx)) {
                 DOCA_LOG_DBG("failed create new entry");
                 return -1;
             }
             entry = (struct gw_entry *) &(*ctx)->data[0];
-            entry->hw_entry = gw_pipeline_add_ol_to_ol_entry(pinfo,gw_ins->p1_over_under[pinfo->orig_port_id]);
+            entry->hw_entry = gw_pipeline_add_ol_to_ol_entry(pinfo,gw_ins->p_over_under[pinfo->orig_port_id]);
             if (entry->hw_entry == NULL) {
                 DOCA_LOG_DBG("failed to offload");
                 return -1;
@@ -562,6 +617,7 @@ int gw_handle_new_flow(struct doca_pkt_info *pinfo, struct doca_ft_user_ctx **ct
             // add flow to pipeline
             break;
         case GW_BYPASS_L4:
+            DOCA_LOG_INFO("adding entry no tun");
             if (!doca_ft_add_new(gw_ins->ft, pinfo,ctx)) {
                 DOCA_LOG_DBG("failed create new entry");
                 return -1;
@@ -571,6 +627,8 @@ int gw_handle_new_flow(struct doca_pkt_info *pinfo, struct doca_ft_user_ctx **ct
             DOCA_LOG_WARN("BYPASS");
             return -1;
     }
+    if (entry != NULL) 
+        entry->cls = cls;
     return 0;
 }
 
@@ -578,7 +636,7 @@ static
 int gw_handle_packet(struct doca_pkt_info *pinfo)
 {
     struct doca_ft_user_ctx *ctx = NULL;
-    struct gw_entry *entry;
+    struct gw_entry *entry = NULL;
 
     if(!doca_ft_find(gw_ins->ft, pinfo, &ctx)){
         if (gw_handle_new_flow(pinfo,&ctx)) {
@@ -587,6 +645,20 @@ int gw_handle_packet(struct doca_pkt_info *pinfo)
     }
     entry = (struct gw_entry *) &ctx->data[0];
     entry->total_pkts++;
+
+    /* after session was offloaded it should not
+     * get to here */
+    switch (entry->cls) {
+        case GW_CLS_OL_TO_OL:
+            break;
+        case GW_CLS_OL_TO_UL:
+            break;
+        case GW_BYPASS_L4:
+            break;
+        case GW_BYPASS:
+            break;
+    }
+
     return 0;
 }
 

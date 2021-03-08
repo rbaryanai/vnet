@@ -59,6 +59,7 @@ struct doca_ft {
     struct doca_gauge *cps_gauge;
 
     void (*gw_aging_cb)(struct doca_ft_user_ctx *ctx);
+    void (*gw_aging_hw_cb)(void);
     struct doca_ft_bucket buckets[0];
 };
 
@@ -146,7 +147,9 @@ static uint32_t doca_ft_key_hash(struct doca_ft_key *key)
     return hash;
 }
 
-struct doca_ft *doca_ft_create(int size, uint32_t user_data_size, void (*gw_aging_cb)(struct doca_ft_user_ctx *ctx))
+struct doca_ft *doca_ft_create(int size, uint32_t user_data_size, 
+                               void (*gw_aging_cb)(struct doca_ft_user_ctx *ctx),
+                               void (*gw_aging_hw_cb)(void))
 {
     struct doca_gauge_cfg gauge_cfg = {20,1000};
     struct doca_ft *ft;
@@ -178,6 +181,7 @@ struct doca_ft *doca_ft_create(int size, uint32_t user_data_size, void (*gw_agin
     ft->cfg.size = act_size;
     ft->cfg.mask = act_size - 1;
     ft->gw_aging_cb = gw_aging_cb;
+    ft->gw_aging_hw_cb =gw_aging_hw_cb;
     ft->cps_gauge = doca_gauge_init(&gauge_cfg); 
         
     DOCA_LOG_DBG("FT create size=%d, user_data_size=%d",size, user_data_size);

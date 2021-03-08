@@ -1,3 +1,41 @@
+/**
+ * @brief 
+ *
+ * GW has the following pipeline
+ *
+ * match:    modify    -->
+ * - outer   - decap
+ * - tunnel  - headers (ip..etc)  
+ * - inner   - encap
+ *
+ *   --> monitor       -->
+ *      - count (per session)
+ *      - meter
+ *      - mirror
+ *
+ *  FWD
+ *    - SW (queue RSS)
+ *    - Port 
+ *      - load balance
+ *      - ecmp
+ *      - FIB 
+ *
+ * Pipeline is a subset of the generic pipeline where
+ * none relevant fields are masked out, constant fields are
+ * given a single value.
+ *
+ * Pipeline can support:
+ *    - meter (entire traffic on pipeline)
+ *    - count
+ *
+ * Once a pipeline is defined (attached to port), pipeline
+ * can be populated by entries, where only none masked/none constant
+ * fields are provided.
+ *
+ * Support:
+ *  - aging
+ *  - offload KPI's
+ */
 #ifndef _DOCA_GW_H_
 #define _DOCA_GW_H_
 
@@ -15,8 +53,8 @@ enum doca_gw_modify_flags {
 };
 
 /**
- * @brief - on doca api failure one of 
- *the error reasons should be returned.
+ * @brief :
+ *    API calls failure reasons
  */
 enum doca_gw_error_type {
     DOCA_ERROR_UNKNOWN,
@@ -26,10 +64,9 @@ enum doca_gw_error_type {
 };      
 
 /**
- * @brief - each call to api can include error message
- *  struct.
- *  in case of an error and type and a description of the error
- *  will provided.
+ * @brief - each call to api include error message struct.
+ *  in case of an error, error type and a description of the error
+ *  is provided.
  */
 struct doca_gw_error {
     enum doca_gw_error_type type;
@@ -37,9 +74,13 @@ struct doca_gw_error {
 };
 
 
+/**
+ * @brief - GW global configurations
+ */
 struct doca_gw_cfg {
     uint32_t total_sessions;
-    uint16_t queues; // each offload thread should use a different queue id.
+    uint16_t queues; /* each offload thread should use a different queue id */
+    bool     aging;  /* when true, aging is handled by doca */
 };
 
 enum doca_gw_port_type {
@@ -48,38 +89,43 @@ enum doca_gw_port_type {
 };
 
 struct doca_gw_port_cfg {
-    enum doca_gw_port_type type;
-    uint16_t queues;
-    const char *devargs;
-    uint16_t priv_data_size;  // user private data
+    enum doca_gw_port_type type;   /* mapping type of port */
+    uint16_t queues;                
+    const char *devargs;           /* specific per port type cfg */
+    uint16_t priv_data_size;       /* user private data */
 };
 
+/**
+ * @brief - matcher
+ *   - used for defintion of a pipeline
+ *   - used for adding entry
+ *     - only changeable fields are needed
+ */
 struct doca_gw_match {
 
     uint8_t  out_src_mac[DOCA_ETHER_ADDR_LEN];
     uint8_t  out_dst_mac[DOCA_ETHER_ADDR_LEN];
 
-    // tunnel
+    /* outer if tunnel exists */
     struct   doca_ip_addr out_src_ip;
     struct   doca_ip_addr out_dst_ip;
-    uint8_t  out_l3_type;
+    uint8_t  out_l4_type;
     uint16_t out_src_port;
     uint16_t out_dst_port;
 
     struct doca_gw_tun tun;
 
-    //inner
+    /* exists if tunnel is used */
     struct doca_ip_addr in_src_ip;
     struct doca_ip_addr in_dst_ip;
 
-    uint8_t  in_l3_type;
+    uint8_t  in_l4_type;
     uint16_t in_src_port;
     uint16_t in_dst_port;
 };
 
 struct doca_gw_encap_action {
   
-    //TODO: do we need here an array?  
     uint8_t src_mac[DOCA_ETHER_ADDR_LEN];
     uint8_t dst_mac[DOCA_ETHER_ADDR_LEN];
 
@@ -88,6 +134,11 @@ struct doca_gw_encap_action {
     struct doca_gw_tun tun;
 };
 
+/**
+ * @brief - action template
+ *    - used for defintion per pipeline
+ *    - used when adding entries for a pipeline 
+ */
 struct doca_gw_actions {
 
     uint8_t flags;          
@@ -116,12 +167,16 @@ struct doca_gw_monitor {
         uint64_t cbs;
         uint64_t ebs;
     } m;
+
+    struct mirror {
+     
+    } mirror;
+
     uint32_t aging;
 };
 
 /**
- * @brief - pipe identifier.
- *  user defines a pipe before using it
+ * @brief - pipeline definition
  */
 struct doca_gw_pipeline_cfg {
     const char *name;
@@ -137,6 +192,9 @@ enum doca_fwd_tbl_type {
     DOCA_FWD_PORT
 };
 
+/**
+ * @brief - forwarding configuration
+ */
 struct doca_fwd_table_cfg {
     enum doca_fwd_tbl_type type;
     union {
@@ -159,7 +217,8 @@ struct doca_gw_query {
 };
 
 /**
- * @brief 
+ * @brief - create a forwarding table that can be used in pipeline.
+ *   
  *
  * @param cfg
  *
@@ -169,6 +228,8 @@ struct doca_fwd_tbl *doca_gw_create_fwd_tbl(struct doca_fwd_table_cfg *cfg);
 
 /**
  * @brief 
+ *      one time call, used for doca flow init and global 
+ *      configurations.
  *
  * @param cgf
  *
@@ -179,7 +240,7 @@ int doca_gw_init(struct doca_gw_cfg *cfg, struct doca_gw_error *err);
 
 /**
  * @brief - start a doca port. doca ports are required to define pipelines.
- *      ports are also required for forwarding.
+ *          ports are also required for forwarding.
  *
  * @param cfg   - port configuration 
  * @param err   - on failure will hold failed message
@@ -224,15 +285,15 @@ struct doca_gw_pipeline *doca_gw_create_pipe(struct doca_gw_pipeline_cfg *cfg, s
 /**
  * @brief 
  *
- * @param pipe_queue
- * @param pipeline
+ * @param pipe_queue  - each thread should use a unique id
+ * @param pipeline    
  * @param match
  * @param actions
  * @param mod
  * @param fwd
  * @param err
  *
- * @return 
+ * @return entry ref on success and NULL otherwise with reason filled in err.
  */
 struct doca_gw_pipelne_entry *doca_gw_pipeline_add_entry(uint16_t pipe_queue, 
                       struct doca_gw_pipeline *pipeline, struct doca_gw_match *match,
@@ -258,5 +319,20 @@ int doca_gw_rm_entry(uint16_t pipe_queue, struct doca_gw_pipelne_entry *entry);
  * @return 0 on success
  */
 int doca_gw_query(struct doca_gw_pipelne_entry *pe, struct doca_gw_query *q);
+
+
+
+/**
+ * @brief 
+ *    when aging is handled by doca, the following function should
+ *    be returned 
+ *
+ * @param arr       - aged out flows are put here
+ * @param arr_len   - length of the array
+ * @param n         - number of entries filled (ready to be aged out entries)
+ *
+ * @return true if there are more waiting entries for aging.
+ */
+bool doca_gw_query_aging(struct doca_gw_pipelne_entry *arr, int arr_len, int *n);
 
 #endif
