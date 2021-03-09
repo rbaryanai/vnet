@@ -47,7 +47,7 @@ DOCA_LOG_MODULE(main)
 static volatile bool force_quit;
 
 static uint16_t port_id;
-static uint16_t nr_queues = 2;
+uint16_t nr_queues = 2;
 static const char *pcap_file_name = "/var/opt/rbaryanai/vnet/build/examples/vnet/test.pcap";
 static struct doca_pcap_hander *ph;
 
@@ -89,6 +89,7 @@ gw_process_pkts(void)
                     if (nb_rx) {
                         for (j = 0; j < nb_rx; j++) {
                             memset(&pinfo,0, sizeof(struct doca_pkt_info));
+							doca_dump_rte_mbuff("recv mbuff:", mbufs[j]);
                             if(!doca_parse_packet(VNF_PKT_L2(mbufs[j]),VNF_PKT_LEN(mbufs[j]), &pinfo)){
                                 pinfo.orig_port_id = mbufs[j]->port;
                                 if (pinfo.outer.l3_type == 4) {

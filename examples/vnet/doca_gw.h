@@ -60,6 +60,9 @@ enum doca_gw_error_type {
     DOCA_ERROR_UNKNOWN,
     DOCA_ERROR_UNSUPPORTED,
     DOCA_ERROR_TABLE_IS_FULL,
+    DOCA_ERROR_NOMORE_PIPE_RESOURCE,
+    DOCA_ERROR_PIPE_BUILD_IMTE_ERROR,
+    DOCA_ERROR_PIPE_BUILD_ACTION_ERROR,
     DOCA_ERROR_OOM,
 };      
 
@@ -105,6 +108,7 @@ struct doca_gw_match {
 
     uint8_t  out_src_mac[DOCA_ETHER_ADDR_LEN];
     uint8_t  out_dst_mac[DOCA_ETHER_ADDR_LEN];
+    uint16_t  vlan_id;
 
     /* outer if tunnel exists */
     struct   doca_ip_addr out_src_ip;
@@ -190,6 +194,12 @@ struct doca_gw_pipeline_cfg {
 enum doca_fwd_tbl_type {
     DOCA_FWD_RSS,
     DOCA_FWD_PORT
+};
+
+enum doca_rss_type {
+	DOCA_RSS_IP =  (1 << 0),
+	DOCA_RSS_UDP =  (1 << 1),
+	DOCA_RSS_TCP =  (1 << 2),
 };
 
 /**

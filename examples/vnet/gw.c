@@ -138,6 +138,7 @@ static struct doca_fwd_tbl *gw_build_rss_fwd(int n_queues)
 
     cfg.type = DOCA_FWD_RSS;
     cfg.rss.queues = queues;
+	cfg.rss.rss_flags = DOCA_RSS_IP | DOCA_RSS_UDP | DOCA_RSS_IP;
     cfg.rss.num_queues = n_queues;
     return doca_gw_create_fwd_tbl(&cfg);
 }
@@ -155,9 +156,8 @@ static void gw_build_match_tun_and_5tuple(struct doca_gw_match *match)
 {
     match->out_dst_ip.a.ipv4_addr = 0xffffffff;
     match->out_dst_ip.type = DOCA_IPV4;
-    match->out_l4_type = DOCA_IPV4;
-    match->out_dst_port = rte_be_to_cpu_16(4789); // VXLAN (change to enum/define)
-
+    match->out_l4_type = IPPROTO_UDP;
+    match->out_dst_port = DOCA_VXLAN_DEFAULT_PORT; // VXLAN (change to enum/define)
 
     match->tun.type = DOCA_TUN_VXLAN;
     match->tun.vxlan.tun_id = 0xffffffff;
@@ -166,7 +166,7 @@ static void gw_build_match_tun_and_5tuple(struct doca_gw_match *match)
     match->in_dst_ip.a.ipv4_addr = 0xffffffff;
     match->in_src_ip.a.ipv4_addr = 0xffffffff;
     match->in_src_ip.type = DOCA_IPV4;
-    match->in_l4_type = 0xff;
+    match->in_l4_type = IPPROTO_UDP; //must set tcp/udp/icmp, to build next layer.
 
     match->in_src_port = 0xffff;
     match->in_dst_port = 0xffff;
@@ -176,7 +176,11 @@ static void gw_build_decap_inner_modify_actions(struct doca_gw_actions *actions)
 {
     // chaning destination ip of inner packet (after decap)
     actions->decap = true;
-    actions->mod_dst_ip.a.ipv4_addr = 0xffffffff;
+	//test cover all fields.
+    actions->mod_src_ip.a.ipv4_addr = 0xffffffff;
+	actions->mod_dst_ip.a.ipv4_addr = 0xffffffff;
+	actions->mod_src_port = 0xffff;
+	actions->mod_dst_port = 0xffff;
 }
 
 static void gw_build_encap_actions(struct doca_gw_actions *actions)
@@ -364,18 +368,22 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_inf
 
     /* exact match on dst ip and vni */
     match.out_dst_ip.a.ipv4_addr = doca_pinfo_outer_ipv4_dst(pinfo);
+	match.tun.type = DOCA_TUN_VXLAN; //must set
     match.tun.vxlan.tun_id = pinfo->tun.vni;
 
     /* exact inner 5-tuple */
     match.in_dst_ip.a.ipv4_addr = doca_pinfo_inner_ipv4_dst(pinfo);
     match.in_src_ip.a.ipv4_addr = doca_pinfo_inner_ipv4_src(pinfo);
     match.in_l4_type = pinfo->inner.l4_type;
-    match.in_src_port = doca_pinfo_inner_src_port(pinfo);
-    match.in_dst_port = doca_pinfo_inner_dst_port(pinfo);
+    match.in_src_port = rte_be_to_cpu_16(doca_pinfo_inner_src_port(pinfo));
+    match.in_dst_port = rte_be_to_cpu_16(doca_pinfo_inner_dst_port(pinfo));
 
     actions.mod_dst_ip.a.ipv4_addr = (doca_pinfo_inner_ipv4_dst(pinfo) & rte_cpu_to_be_32(0x00ffffff))
                                     | rte_cpu_to_be_32(0x25000000); // change dst ip
-
+    //for test all field
+	actions.mod_src_ip.a.ipv4_addr = ((192<<24) + (168<<16) + (1<<8) + 1);
+	actions.mod_dst_port = 1234; 
+	actions.mod_src_port = 4321;
     //TODO: add context
     return doca_gw_pipeline_add_entry(0, pipeline, &match, &actions, &monitor,
                                       sw_rss_fwd_tbl_port[pinfo->orig_port_id], &err);
@@ -459,10 +467,12 @@ fail_init:
     return -1;
 }
 
+extern uint16_t nr_queues;
 static int gw_init_doca_ports_and_pipes(int ret)
 {
-    struct gw_port_cfg cfg_port0 = { .n_queues = 4, .port_id = 0 };
-    struct gw_port_cfg cfg_port1 = { .n_queues = 4, .port_id = 1 };
+    struct gw_port_cfg cfg_port0 = { .n_queues = nr_queues, .port_id = 0 };
+    struct gw_port_cfg cfg_port1 = { .n_queues = nr_queues, .port_id = 1 };
+
     struct doca_gw_error err = {0};
 
     struct doca_gw_cfg cfg = {GW_MAX_FLOWS};

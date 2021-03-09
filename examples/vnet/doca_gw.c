@@ -1,5 +1,6 @@
 #include "doca_gw.h"
 #include "doca_log.h"
+#include "doca_gw_dpdk.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -36,11 +37,13 @@ int doca_gw_init(struct doca_gw_cfg *cfg,struct doca_gw_error *err)
     if (err) {
         *err = *err;
     }
+	doca_gw_init_dpdk(cfg);
     return 0;
 }
 
 struct doca_gw_pipelne_entry {
     int id;
+	void *pipe_entry;
 };
 
 /**
@@ -57,23 +60,35 @@ struct doca_gw_pipelne_entry *doca_gw_pipeline_add_entry(uint16_t pipe_queue,
 {
     static int  pipe_entry_id = 0;
     struct doca_gw_pipelne_entry *entry;
-    *mon = *mon;
-    *err = *err;
-    entry = (struct doca_gw_pipelne_entry *) malloc(sizeof(struct doca_gw_pipelne_entry));
-    memset(entry,0,sizeof(struct doca_gw_pipelne_entry));
-    entry->id = pipe_entry_id++;
-    if(fwd == NULL){
+
+    if(fwd == NULL) {
         DOCA_LOG_WARN("no forwading");
-        return entry;
+        return NULL;
     }
+    entry = (struct doca_gw_pipelne_entry *) malloc(sizeof(struct doca_gw_pipelne_entry));
+	if (entry == NULL)
+		return NULL;
+    memset(entry,0,sizeof(struct doca_gw_pipelne_entry));
+	entry->pipe_entry = doca_gw_dpdk_pipe_create_flow(pipeline->handler,
+		match, actions, mon, &fwd->cfg, err);
+	if (entry->pipe_entry == NULL) {
+		DOCA_LOG_INFO("create pip entry fail.\n");
+		goto free_pipe_entry;
+	}
+	entry->id = pipe_entry_id++;
     DOCA_LOG_INFO("offload[%d]: queue = %d port id=%p, match =%pi mod %p, fwd %d", entry->id, 
                   pipe_queue, pipeline, match, actions, fwd->id);
-    return entry;
+	return entry;
+free_pipe_entry:
+	free(entry);
+	return NULL;
 }
 
 int doca_gw_rm_entry(uint16_t pipe_queue, struct doca_gw_pipelne_entry *entry)
 {
     DOCA_LOG_INFO("(pipe %d) HW release id%d",pipe_queue, entry->id);
+	// TODO: how to get the port id?
+	//doca_gw_dpdk_free_flow(0, entry->pipe_entry);
     free(entry);
     return 0;
 }
@@ -136,13 +151,13 @@ struct doca_gw_pipeline *doca_gw_create_pipe(struct doca_gw_pipeline_cfg *cfg, s
     static uint32_t pipe_id = 1;
     struct doca_gw_pipeline *pl = malloc(sizeof(struct doca_gw_pipeline));
     memset(pl,0,sizeof(struct doca_gw_pipeline));
-    *err = *err;
 
     if (cfg != NULL && pl != NULL) {
         // allocate what is needed
         pl->id = pipe_id++;
         printf("pipeline: %s, id = %d was created successfully \n",cfg->name, pl->id);
     }
+	pl->handler = doca_gw_dpdk_create_pipe(cfg, err);
     return pl;
 }
 

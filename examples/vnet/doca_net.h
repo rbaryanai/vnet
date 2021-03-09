@@ -3,9 +3,10 @@
 
 #define DOCA_TCP  (0x6)
 #define DOCA_ETHER_ADDR_LEN (6)
+#define DOCA_VXLAN_DEFAULT_PORT (4789)
 
-enum doca_gw_ip_type
-{
+enum doca_gw_l3_type {
+	DOCA_NONE = 0,
     DOCA_IPV4 = 4,
     DOCA_IPV6 = 6,
 };
@@ -13,6 +14,16 @@ enum doca_gw_ip_type
 enum doca_gw_tun_type {
     DOCA_TUN_NONE = 0,
     DOCA_TUN_VXLAN,
+};
+
+enum doca_modify_flags{
+	DOCA_MODIFY_SMAC	= (1 << 0),
+	DOCA_MODIFY_DMAC	= (1 << 1),
+	DOCA_MODIFY_VLAN_ID	= (1 << 2),
+	DOCA_MODIFY_SIP		= (1 << 3),
+	DOCA_MODIFY_DIP		= (1 << 4),
+	DOCA_MODIFY_SPORT	= (1 << 5),
+	DOCA_MODIFY_DPORT	= (1 << 6),
 };
 
 struct doca_gw_tun {
