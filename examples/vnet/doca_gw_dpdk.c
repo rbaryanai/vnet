@@ -169,7 +169,6 @@ static void doca_gw_dpdk_build_ipv4_flow_item(struct doca_dpdk_item_entry *entry
 		if (doca_is_ip_max(&src_ip))
 			entry->flags |= DOCA_MODIFY_SIP;
 	}
-
 	if (!doca_is_ip_zero(&dst_ip)){
 		spec->hdr.dst_addr = dst_ip.a.ipv4_addr;
 		mask->hdr.dst_addr = UINT32_MAX;
@@ -840,6 +839,9 @@ doca_gw_dpdk_pipe_create_flow(struct doca_gw_pipe_dpdk_flow *pipe,
 					__rte_unused struct doca_gw_monitor *mon, struct doca_fwd_table_cfg *cfg,
 					__rte_unused struct doca_gw_error *err)
 {
+	DOCA_LOG_INFO("pip create flow:\n");
+	doca_dump_gw_match(match);
+	doca_dump_gw_actions(actions);
 	if(match == NULL && actions == NULL && cfg == NULL)
 		return NULL;
 	if (doca_gw_dpdk_modify_pipe_match(pipe, match)) {
@@ -856,6 +858,8 @@ doca_gw_dpdk_pipe_create_flow(struct doca_gw_pipe_dpdk_flow *pipe,
 		return NULL;
 	}
 	doca_gw_dpdk_build_end_action(pipe);
+	doca_dump_rte_flow("create rte flow:", pipe->port_id, &pipe->attr,
+		pipe->items, pipe->actions);
 	return doca_gw_dpdk_create_flow(pipe->port_id, &pipe->attr, pipe->items, pipe->actions);
 }
 
@@ -887,6 +891,9 @@ doca_gw_dpdk_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_gw_error 
 	int ret;
 	struct doca_gw_pipe_dpdk_flow *pipe_flow;
 
+	DOCA_LOG_INFO("doca create pipe:%s\n", cfg->name);
+	doca_dump_gw_match(cfg->match);
+	doca_dump_gw_actions(cfg->actions);
 	pipe_flow = doca_gw_dpdk_get_free_pipe();
 	if (pipe_flow == NULL) {
 		err->type = DOCA_ERROR_NOMORE_PIPE_RESOURCE;
@@ -905,6 +912,8 @@ doca_gw_dpdk_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_gw_error 
 		err->type = DOCA_ERROR_PIPE_BUILD_ACTION_ERROR;
 		goto free_pipe;
 	}
+	doca_dump_rte_flow("create pipe:", pipe_flow->port_id, &pipe_flow->attr,
+		pipe_flow->items, pipe_flow->actions);
 	return pipe_flow;
 free_pipe:
 	doca_gw_dpdk_pipe_release(pipe_flow);
