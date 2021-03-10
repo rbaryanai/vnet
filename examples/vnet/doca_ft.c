@@ -85,6 +85,9 @@ static void * doca_ft_aging_main(void *void_ptr)
     while(!ft->stop_aging_thread){
         uint64_t t = rte_rdtsc();
 
+        if ((int) (ft->stats.add - ft->stats.rm) == 0){
+            continue;
+        }
         DOCA_LOG_INFO("total entries: %d", (int) (ft->stats.add - ft->stats.rm));
         DOCA_LOG_INFO("total adds   : %d", (int) (ft->stats.add));
         DOCA_LOG_INFO("cps: %d",doca_gauge_get_sum(ft->cps_gauge));

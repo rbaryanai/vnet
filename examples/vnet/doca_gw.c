@@ -66,16 +66,16 @@ struct doca_gw_pipelne_entry *doca_gw_pipeline_add_entry(uint16_t pipe_queue,
         return NULL;
     }
     entry = (struct doca_gw_pipelne_entry *) malloc(sizeof(struct doca_gw_pipelne_entry));
-	if (entry == NULL)
-		return NULL;
+    if (entry == NULL)
+            return NULL;
     memset(entry,0,sizeof(struct doca_gw_pipelne_entry));
-	entry->pipe_entry = doca_gw_dpdk_pipe_create_flow(pipeline->handler,
+    entry->pipe_entry = doca_gw_dpdk_pipe_create_flow(pipeline->handler,
 		match, actions, mon, &fwd->cfg, err);
-	if (entry->pipe_entry == NULL) {
-		DOCA_LOG_INFO("create pip entry fail.\n");
-		goto free_pipe_entry;
-	}
-	entry->id = pipe_entry_id++;
+    if (entry->pipe_entry == NULL) {
+            DOCA_LOG_INFO("create pip entry fail.\n");
+            goto free_pipe_entry;
+    }
+    entry->id = pipe_entry_id++;
     DOCA_LOG_INFO("offload[%d]: queue = %d port id=%p, match =%pi mod %p, fwd %d", entry->id, 
                   pipe_queue, pipeline, match, actions, fwd->id);
 	return entry;
@@ -155,9 +155,8 @@ struct doca_gw_pipeline *doca_gw_create_pipe(struct doca_gw_pipeline_cfg *cfg, s
     if (cfg != NULL && pl != NULL) {
         // allocate what is needed
         pl->id = pipe_id++;
-        printf("pipeline: %s, id = %d was created successfully \n",cfg->name, pl->id);
     }
-	pl->handler = doca_gw_dpdk_create_pipe(cfg, err);
+    pl->handler = doca_gw_dpdk_create_pipe(cfg, err);
     return pl;
 }
 

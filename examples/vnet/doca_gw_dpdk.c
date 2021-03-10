@@ -164,7 +164,7 @@ static void doca_gw_dpdk_build_ipv4_flow_item(struct doca_dpdk_item_entry *entry
 	flow_item->type = RTE_FLOW_ITEM_TYPE_IPV4;
 	entry->item_data.ipv4.match_layer = type;//inner or outer
 	if (!doca_is_ip_zero(&src_ip)){
-		spec->hdr.src_addr = rte_cpu_to_be_16(src_ip.a.ipv4_addr);
+		spec->hdr.src_addr = src_ip.a.ipv4_addr;
 		mask->hdr.src_addr = UINT32_MAX;
 		if (doca_is_ip_max(&src_ip))
 			entry->flags |= DOCA_MODIFY_SIP;
@@ -175,7 +175,8 @@ static void doca_gw_dpdk_build_ipv4_flow_item(struct doca_dpdk_item_entry *entry
 		if (doca_is_ip_max(&dst_ip))
 			entry->flags |= DOCA_MODIFY_DIP;
 	}
-	spec->hdr.next_proto_id = match->out_l4_type;//IPPROTO_UDP or IPPROTO_TCP
+	spec->hdr.next_proto_id = (type == OUTER_MATCH)?
+                                  match->out_l4_type:match->in_l4_type;
 	mask->hdr.next_proto_id = UINT8_MAX;
 	flow_item->spec = spec;
 	flow_item->mask = mask;

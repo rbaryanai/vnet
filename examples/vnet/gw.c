@@ -166,7 +166,7 @@ static void gw_build_match_tun_and_5tuple(struct doca_gw_match *match)
     match->in_dst_ip.a.ipv4_addr = 0xffffffff;
     match->in_src_ip.a.ipv4_addr = 0xffffffff;
     match->in_src_ip.type = DOCA_IPV4;
-    match->in_l4_type = IPPROTO_UDP; //must set tcp/udp/icmp, to build next layer.
+    match->in_l4_type = 0x6;
 
     match->in_src_port = 0xffff;
     match->in_dst_port = 0xffff;
@@ -177,10 +177,10 @@ static void gw_build_decap_inner_modify_actions(struct doca_gw_actions *actions)
     // chaning destination ip of inner packet (after decap)
     actions->decap = true;
 	//test cover all fields.
-    actions->mod_src_ip.a.ipv4_addr = 0xffffffff;
-	actions->mod_dst_ip.a.ipv4_addr = 0xffffffff;
-	actions->mod_src_port = 0xffff;
-	actions->mod_dst_port = 0xffff;
+    //actions->mod_src_ip.a.ipv4_addr = 0xffffffff;
+    actions->mod_dst_ip.a.ipv4_addr = 0xffffffff;
+    //actions->mod_src_port = 0xffff;
+    //actions->mod_dst_port = 0xffff;
 }
 
 static void gw_build_encap_actions(struct doca_gw_actions *actions)
@@ -368,7 +368,7 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_inf
 
     /* exact match on dst ip and vni */
     match.out_dst_ip.a.ipv4_addr = doca_pinfo_outer_ipv4_dst(pinfo);
-	match.tun.type = DOCA_TUN_VXLAN; //must set
+    match.tun.type = DOCA_TUN_VXLAN; //must set
     match.tun.vxlan.tun_id = pinfo->tun.vni;
 
     /* exact inner 5-tuple */
@@ -380,10 +380,11 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_inf
 
     actions.mod_dst_ip.a.ipv4_addr = (doca_pinfo_inner_ipv4_dst(pinfo) & rte_cpu_to_be_32(0x00ffffff))
                                     | rte_cpu_to_be_32(0x25000000); // change dst ip
+    //DELELTE
     //for test all field
-	actions.mod_src_ip.a.ipv4_addr = ((192<<24) + (168<<16) + (1<<8) + 1);
-	actions.mod_dst_port = 1234; 
-	actions.mod_src_port = 4321;
+    //actions.mod_src_ip.a.ipv4_addr = ((192<<24) + (168<<16) + (1<<8) + 1);
+    //actions.mod_dst_port = 1234; 
+    //actions.mod_src_port = 4321;
     //TODO: add context
     return doca_gw_pipeline_add_entry(0, pipeline, &match, &actions, &monitor,
                                       sw_rss_fwd_tbl_port[pinfo->orig_port_id], &err);
