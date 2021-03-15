@@ -163,14 +163,27 @@ static int doca_parse_is_tun(struct doca_pkt_info *pinfo)
     }
 
     if (pinfo->outer.l3_type == IPPROTO_GRE) {
-        // need to parse jre
+        int optional_off = 0;
         struct rte_gre_hdr *gre_hdr = (struct rte_gre_hdr *) pinfo->outer.l4;
+
+        //TODO: checksum field not supprted yet.
+        // validate on version
+        if(gre_hdr->c)
+            return -1;
         // need to now how to parse
         if (gre_hdr->k) {
-                return 0;
+            optional_off+=4;
+            pinfo->tun.vni  = *(uint32_t *)(pinfo->outer.l4 + sizeof(struct rte_gre_hdr));
+            pinfo->tun.l2   = true;
+            return 0;
         }
+
+        if (gre_hdr->s) {
+            optional_off+=4;
+        }
+
         pinfo->tun_type = APP_TUN_GRE;
-        return sizeof(struct rte_gre_hdr);
+        return sizeof(struct rte_gre_hdr) + optional_off;
    }
 
 
@@ -227,7 +240,7 @@ int doca_parse_packet(uint8_t *data, int len, struct doca_pkt_info *pinfo)
 
     off = doca_parse_is_tun(pinfo);
     // no tunnel parsing is done
-    if (pinfo->tun_type == APP_TUN_NONE) {
+    if (pinfo->tun_type == APP_TUN_NONE || off < 0) {
         return 0;
     }
 

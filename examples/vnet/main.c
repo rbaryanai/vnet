@@ -46,12 +46,20 @@ DOCA_LOG_MODULE(main)
 
 static volatile bool force_quit;
 
-static uint16_t port_id;
 uint16_t nr_queues = 2;
 static const char *pcap_file_name = "/var/opt/rbaryanai/vnet/build/examples/vnet/test.pcap";
 static struct doca_pcap_hander *ph;
 
 static struct doca_vnf *vnf;
+
+struct vnf_per_core_params {
+    int ports[VNF_NUM_OF_PORTS];
+    int queues[VNF_NUM_OF_PORTS];
+    int core_id;
+    bool used;
+};
+
+struct vnf_per_core_params core_params_arr[RTE_MAX_LCORE];
 
 static inline uint64_t gw_get_time_usec(void)
 {
@@ -72,20 +80,21 @@ static void vnf_adjust_mbuf(struct rte_mbuf *m, struct doca_pkt_info *pinfo)
     //rte_pktmbuf_adj(m,diff);
 }
 
-static void
-gw_process_pkts(void)
+static int
+gw_process_pkts(void *p)
 {
 	struct rte_mbuf *mbufs[VNF_RX_BURST_SIZE];
-	struct rte_flow_error error;
 	uint16_t nb_rx;
 	uint16_t i;
 	uint16_t j;
         struct doca_pkt_info pinfo;
+        struct vnf_per_core_params *params = (struct vnf_per_core_params *)p;
+        int port_id;
 
 	while (!force_quit) {
             for (port_id = 0; port_id < 2; port_id++) { 
-                for (i = 0; i < nr_queues; i++) {
-                    nb_rx = rte_eth_rx_burst(port_id, i, mbufs, VNF_RX_BURST_SIZE);
+                for (i = 0; i < 1/*nr_queues*/; i++) {
+                    nb_rx = rte_eth_rx_burst(port_id, params->queues[port_id], mbufs, VNF_RX_BURST_SIZE);
                     if (nb_rx) {
                         for (j = 0; j < nb_rx; j++) {
                             memset(&pinfo,0, sizeof(struct doca_pkt_info));
@@ -102,17 +111,14 @@ gw_process_pkts(void)
                                     //gw_handle_packet(&pinfo);
                                 }
                             }
-                            rte_eth_tx_burst((mbufs[j]->port == 0) ? 1 : 0, 0, &mbufs[j], 1);
+                            rte_eth_tx_burst((mbufs[j]->port == 0) ? 1 : 0, params->queues[port_id], &mbufs[j], 1);
                         }
                     }
                 }
             }
 	}
 
-	/* closing and releasing resources */
-	rte_flow_flush(port_id, &error);
-	rte_eth_dev_stop(port_id);
-	rte_eth_dev_close(port_id);
+        return 0;
 }
 
 static void
@@ -130,45 +136,40 @@ signal_handler(int signum)
 	}
 }
 
-/*
-static int init_doca(void)
+static int 
+count_lcores(void)
 {
-    int ret = 0;
-
-    struct gw_port_cfg cfg_port0 = { .n_queues = 4, .port_id = 0 };
-    struct gw_port_cfg cfg_port1 = { .n_queues = 4, .port_id = 1 };
-    struct doca_gw_error err = {0};
-
-    struct doca_gw_cfg cfg = {VNF_MAX_FLOWS};
-    if (doca_gw_init(&cfg,&err)) { 
-        DOCA_LOG_ERR("failed to init doca:%s",err.message);
-        return -1;
-    }
-
-    gw_ins->port0 = gw_init_doca_port(&cfg_port0);
-    gw_ins->port1 = gw_init_doca_port(&cfg_port1);
-
-    if (gw_ins->port0 == NULL || gw_ins->port1 == NULL) {
-        DOCA_LOG_ERR("failed to start port %s",err.message);
-        return ret;
-    }
-
-    gw_ins->p1_over_under[0] = gw_init_ol_to_ul_pipeline(gw_ins->port0);
-    gw_ins->p1_over_under[1] = gw_init_ol_to_ul_pipeline(gw_ins->port1);
-
-    return ret;
-}*/
+    int cores = 0;
+    while (core_params_arr[cores].used)
+        cores++;
+    return cores;
+}
 
 static int
 init_dpdk(int argc, char **argv)
 {
 	int ret;
 	uint16_t nr_ports;
+        int i;
+        int total_cores = 0;
 
+        memset(core_params_arr, 0, sizeof(core_params_arr));
 	ret = rte_eal_init(argc, argv);
 	if (ret < 0) {
 		DOCA_LOG_CRIT("invalid EAL arguments\n");
                 return ret;
+        }
+
+        for ( i = 0 ; i < 32 ; i++) {
+            if (rte_lcore_is_enabled(i)){
+                core_params_arr[total_cores].ports[0]= 0;
+                core_params_arr[total_cores].ports[1]= 1;
+                core_params_arr[total_cores].queues[0]= total_cores;
+                core_params_arr[total_cores].queues[1]= total_cores;
+                core_params_arr[total_cores].core_id = i;
+                core_params_arr[total_cores].used = true;
+                total_cores++;
+            }
         }
 
         nr_ports = rte_eth_dev_count_avail();
@@ -176,11 +177,6 @@ init_dpdk(int argc, char **argv)
 		DOCA_LOG_CRIT("no Ethernet ports found\n");
                 return -1;
         }
-	port_id = 0;
-	if (nr_ports != 1) {
-		DOCA_LOG_WARN("warn: %d ports detected, but we use only one: port %u\n",
-			nr_ports, port_id);
-	}
 	
         force_quit = false;
 	signal(SIGINT, signal_handler);
@@ -194,18 +190,21 @@ static bool capture_en = 0;
 int
 main(int argc, char **argv)
 {
+        int total_cores;
+        int i = 0;
 	if (init_dpdk(argc , argv)) {
             rte_exit(EXIT_FAILURE, "Cannot init dpdk\n");
             return -1;
         }
 
-        DOCA_LOG_INFO("starting doca\n");
+        total_cores = count_lcores();
+        DOCA_LOG_INFO("init ports: lcores = %d\n",total_cores);
 
-	gw_init_port(0, nr_queues);
-	gw_init_port(1, nr_queues);
+	gw_init_port(0, total_cores);
+	gw_init_port(1, total_cores);
 
         vnf = gw_get_doca_vnf();
-        vnf->doca_vnf_init();
+        vnf->doca_vnf_init((void *)&total_cores);
 
         DOCA_LOG_INFO("VNF initiated!\n");
 
@@ -213,8 +212,20 @@ main(int argc, char **argv)
             ph = doca_pcap_file_start(pcap_file_name);
         }
 
-	gw_process_pkts();
+        i = 1;
+        while (core_params_arr[i].used) {
+              rte_eal_remote_launch((lcore_function_t *)gw_process_pkts,
+                        &core_params_arr[i], core_params_arr[i].core_id);
+            i++;
+        }
+
+        // use main lcode as a thread.
+        gw_process_pkts(&core_params_arr[i]);
 
         vnf->doca_vnf_destroy();
+
+        gw_close_port(0);
+        gw_close_port(1);
+
 	return 0;
 }

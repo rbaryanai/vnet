@@ -134,3 +134,11 @@ int gw_init_port(int port_id,int nr_queues)
 	DOCA_LOG_INFO("initializing port: %d done", port_id);
         return 0;
 }
+
+void gw_close_port(int port_id)
+{
+    struct rte_flow_error error;
+    rte_flow_flush(port_id, &error);
+    rte_eth_dev_stop(port_id);
+    rte_eth_dev_close(port_id);
+}

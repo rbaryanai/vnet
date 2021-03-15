@@ -11,12 +11,6 @@ struct gw_port_cfg {
     uint16_t port_id;
 };
 
-
-
-int gw_init(void);
-
-
-
 /**
  * @brief - put packet format as readble string.
  *  for debug/log purpose

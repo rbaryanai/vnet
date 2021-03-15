@@ -468,14 +468,12 @@ fail_init:
     return -1;
 }
 
-extern uint16_t nr_queues;
-static int gw_init_doca_ports_and_pipes(int ret)
+static int gw_init_doca_ports_and_pipes(int ret, int nr_queues)
 {
     struct gw_port_cfg cfg_port0 = { .n_queues = nr_queues, .port_id = 0 };
     struct gw_port_cfg cfg_port1 = { .n_queues = nr_queues, .port_id = 1 };
 
     struct doca_gw_error err = {0};
-
     struct doca_gw_cfg cfg = {GW_MAX_FLOWS};
     if (ret) {
         return ret;
@@ -549,13 +547,13 @@ static int gw_init_lb(int ret)
     return 0;
 }
 
-int gw_init(void)
+static int gw_init(void *p)
 {
-
+    int queues = *((int *)p);
     int ret = 0;
     ret |= gw_create();
     ret |= gw_init_lb(ret);
-    ret |= gw_init_doca_ports_and_pipes(ret);
+    ret |= gw_init_doca_ports_and_pipes(ret, queues);
 
     return ret;
 }
@@ -577,6 +575,7 @@ void gw_aged_flow_cb(struct doca_ft_user_ctx *ctx)
     struct gw_entry *entry = (struct gw_entry *) &ctx->data[0];
     if (entry->is_hw) {
         gw_rm_pipeline_entry(entry->hw_entry);
+        entry->hw_entry = NULL;
     }
 }
 
