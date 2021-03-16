@@ -169,7 +169,6 @@ struct doca_gw_monitor {
     struct meter {
         uint64_t cir;
         uint64_t cbs;
-        uint64_t ebs;
     } m;
 
     struct mirror {

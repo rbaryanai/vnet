@@ -41,6 +41,11 @@ DOCA_LOG_MODULE(GW)
 
 #define GW_MATCH_EQUAL(ENTRY, P)  ((P->dst_addr & ENTRY.mask) == ENTRY.ip)
 
+#define GW_DEFAULT_CIR (100000000/8)
+#define GW_DEFAULT_CBS (GW_DEFAULT_CIR << 4)
+
+static enum doca_gw_tun_type gw_tun_type = DOCA_TUN_VXLAN;
+
 static void gw_aged_flow_cb(struct doca_ft_user_ctx *ctx);
 static void gw_hw_aging_cb(void);
 static int gw_init_lb(int ret);
@@ -143,6 +148,27 @@ static struct doca_fwd_tbl *gw_build_rss_fwd(int n_queues)
     return doca_gw_create_fwd_tbl(&cfg);
 }
 
+static
+void gw_build_tun_match(struct doca_gw_match *match)
+{
+    switch (gw_tun_type) {
+        case DOCA_TUN_VXLAN:
+            match->out_l4_type = IPPROTO_UDP;
+            match->out_dst_port = DOCA_VXLAN_DEFAULT_PORT; // VXLAN (change to enum/define)
+            match->tun.type = DOCA_TUN_VXLAN;
+            match->tun.vxlan.tun_id = 0xffffffff;
+            break;
+        case DOCA_TUN_GRE:
+            match->out_l4_type = IPPROTO_GRE;
+            match->tun.type = DOCA_TUN_GRE;
+            match->tun.vxlan.tun_id = 0xffffffff;
+            break;
+        default:
+            DOCA_LOG_ERR("unsupported tun type");
+
+    }
+}
+
 /**
  * @brief - define a template that match on the following:
  *     
@@ -156,11 +182,7 @@ static void gw_build_match_tun_and_5tuple(struct doca_gw_match *match)
 {
     match->out_dst_ip.a.ipv4_addr = 0xffffffff;
     match->out_dst_ip.type = DOCA_IPV4;
-    match->out_l4_type = IPPROTO_UDP;
-    match->out_dst_port = DOCA_VXLAN_DEFAULT_PORT; // VXLAN (change to enum/define)
-
-    match->tun.type = DOCA_TUN_VXLAN;
-    match->tun.vxlan.tun_id = 0xffffffff;
+    gw_build_tun_match(match);
 
     //inner
     match->in_dst_ip.a.ipv4_addr = 0xffffffff;
@@ -183,15 +205,32 @@ static void gw_build_decap_inner_modify_actions(struct doca_gw_actions *actions)
     //actions->mod_dst_port = 0xffff;
 }
 
+static void gw_build_encap_tun(struct doca_gw_actions *actions)
+{
+    switch(gw_tun_type) {
+        case DOCA_TUN_VXLAN:
+            actions->encap.tun.type = DOCA_TUN_VXLAN;
+            actions->encap.tun.vxlan.tun_id = 0xffffffff;
+            break;
+        case DOCA_TUN_GRE:
+            actions->encap.tun.type = DOCA_TUN_GRE;
+            actions->encap.tun.gre.key = 0xffffffff;
+            break;
+        default:
+            DOCA_LOG_ERR("unsupported tunnel type %d",gw_tun_type);
+
+    }
+}
+
 static void gw_build_encap_actions(struct doca_gw_actions *actions)
 {
     actions->encap.in_src_ip.a.ipv4_addr = doca_inline_parse_ipv4("13.0.0.13");
     actions->encap.in_dst_ip.a.ipv4_addr = 0xffffffff;
-    actions->encap.tun.type = DOCA_TUN_VXLAN;
+
     memset(actions->encap.src_mac,0xff, sizeof(actions->encap.src_mac));
     memset(actions->encap.dst_mac,0xff, sizeof(actions->encap.src_mac));
 
-    actions->encap.tun.vxlan.tun_id = 0xffffffff;
+    gw_build_encap_tun(actions);
 }
 
 static void gw_fill_monior(struct doca_gw_monitor *monitor)
@@ -220,7 +259,7 @@ static struct doca_gw_pipeline *gw_build_ul_ol(struct doca_gw_port *port)
     struct doca_gw_error err = {0};
     struct doca_gw_match match = {0};
     struct doca_gw_actions actions = {0};
-    struct doca_gw_monitor monitor = {0};
+    struct doca_gw_monitor monitor = { .m.cbs = UINT64_MAX,.m.cir = UINT64_MAX};
 
     gw_build_match_tun_and_5tuple(&match);
     gw_build_decap_inner_modify_actions(&actions);
@@ -290,7 +329,7 @@ enum gw_classification gw_classifiy_pkt(struct doca_pkt_info *pinfo)
     int i = 0;
 
     /* unexpected none tunneled packets are ignored */
-    if (pinfo->tun_type != APP_TUN_VXLAN) {
+    if (pinfo->tun_type == APP_TUN_NONE) {
         switch(pinfo->outer.l4_type) {
             case IPPROTO_TCP:
             case IPPROTO_UDP:
@@ -345,6 +384,23 @@ struct doca_gw_port *gw_init_doca_port(struct gw_port_cfg *port_cfg)
     return port;
 }
 
+static void gw_pipeline_set_entry_tun(struct doca_gw_match *match, 
+                                struct doca_pkt_info *pinfo)
+{
+    switch (gw_tun_type) {
+        case DOCA_TUN_VXLAN:
+            match->tun.type = DOCA_TUN_VXLAN; 
+            match->tun.vxlan.tun_id = pinfo->tun.vni;
+            break;
+        case DOCA_TUN_GRE:
+            match->tun.type = DOCA_TUN_GRE; 
+            match->tun.gre.key = pinfo->tun.vni;
+            break;
+        default:
+            DOCA_LOG_ERR("unexpected gw_tun_type %d",gw_tun_type);
+    }
+}
+
 /**
  * @brief - create entry on overlay to underlay pipeline
  *
@@ -358,7 +414,7 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_inf
 {
     struct doca_gw_match match = {0};
     struct doca_gw_actions actions = {0};
-    struct doca_gw_monitor monitor = {0};
+    struct doca_gw_monitor monitor = { .m.cbs = GW_DEFAULT_CBS, .m.cir = GW_DEFAULT_CIR};
     struct doca_gw_error err = {0};
 
     if (pinfo->outer.l3_type != GW_IPV4) {
@@ -368,8 +424,7 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_inf
 
     /* exact match on dst ip and vni */
     match.out_dst_ip.a.ipv4_addr = doca_pinfo_outer_ipv4_dst(pinfo);
-    match.tun.type = DOCA_TUN_VXLAN; //must set
-    match.tun.vxlan.tun_id = pinfo->tun.vni;
+    gw_pipeline_set_entry_tun(&match,pinfo);
 
     /* exact inner 5-tuple */
     match.in_dst_ip.a.ipv4_addr = doca_pinfo_inner_ipv4_dst(pinfo);
@@ -406,7 +461,7 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ol_entry(struct doca_pkt_inf
 
     /* exact match on dst ip and vni */
     match.out_dst_ip.a.ipv4_addr = doca_pinfo_outer_ipv4_dst(pinfo);
-    match.tun.vxlan.tun_id = pinfo->tun.vni;
+    gw_pipeline_set_entry_tun(&match, pinfo);
 
     /* exact inner 5-tuple */
     match.in_dst_ip.a.ipv4_addr = doca_pinfo_inner_ipv4_dst(pinfo);

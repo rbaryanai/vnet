@@ -14,6 +14,7 @@ enum doca_gw_l3_type {
 enum doca_gw_tun_type {
     DOCA_TUN_NONE = 0,
     DOCA_TUN_VXLAN,
+    DOCA_TUN_GRE,
 };
 
 enum doca_modify_flags{
@@ -32,6 +33,11 @@ struct doca_gw_tun {
         struct vxlan {
             uint32_t tun_id;
         } vxlan;
+
+        struct gre {
+            uint32_t key;
+        }gre;
+
     };
 };
 

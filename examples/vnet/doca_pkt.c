@@ -110,6 +110,10 @@ int doca_parse_pkt_format(uint8_t *data, int len, bool l2, struct doca_pkt_forma
     }
 
     iphdr = (struct rte_ipv4_hdr *) (data + l3_off);
+
+    if ((iphdr->version_ihl >> 4) != 4)
+        return -1;
+
     if(iphdr->src_addr == 0 || iphdr->dst_addr == 0) {
         return -1;
     }
@@ -162,7 +166,7 @@ static int doca_parse_is_tun(struct doca_pkt_info *pinfo)
         return 0;
     }
 
-    if (pinfo->outer.l3_type == IPPROTO_GRE) {
+    if (pinfo->outer.l4_type == IPPROTO_GRE) {
         int optional_off = 0;
         struct rte_gre_hdr *gre_hdr = (struct rte_gre_hdr *) pinfo->outer.l4;
 
@@ -175,7 +179,6 @@ static int doca_parse_is_tun(struct doca_pkt_info *pinfo)
             optional_off+=4;
             pinfo->tun.vni  = *(uint32_t *)(pinfo->outer.l4 + sizeof(struct rte_gre_hdr));
             pinfo->tun.l2   = true;
-            return 0;
         }
 
         if (gre_hdr->s) {
@@ -183,6 +186,7 @@ static int doca_parse_is_tun(struct doca_pkt_info *pinfo)
         }
 
         pinfo->tun_type = APP_TUN_GRE;
+        pinfo->tun.proto = gre_hdr->proto;
         return sizeof(struct rte_gre_hdr) + optional_off;
    }
 

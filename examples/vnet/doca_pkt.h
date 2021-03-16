@@ -33,6 +33,7 @@ struct doca_pkt_format {
 struct doca_pkt_tun_format {
     uint32_t  vni;
     bool      l2;
+    uint16_t  proto;
 };
 
 /**
