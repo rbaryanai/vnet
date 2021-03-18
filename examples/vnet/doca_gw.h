@@ -170,7 +170,15 @@ struct doca_gw_actions {
     struct doca_gw_encap_action encap;
 };
 
+enum {
+	DOCA_GW_NONE = 0,
+	DOCA_GW_METER = (1 << 1),
+	DOCA_GW_COUNT = (1 << 2),
+	DOCA_GW_AGING = (1 << 3),
+};
+
 struct doca_gw_monitor {
+    uint8_t flags;
     bool count;
     struct meter {
         uint64_t cir;

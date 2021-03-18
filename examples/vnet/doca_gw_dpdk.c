@@ -3,6 +3,7 @@
 #include "doca_log.h"
 #include <rte_vxlan.h>
 #include <rte_ethdev.h>
+#include <rte_gre.h>
 
 DOCA_LOG_MODULE(doca_gw_dpdk);
 
@@ -257,6 +258,49 @@ static void doca_gw_dpdk_build_vxlan_flow_item(struct doca_dpdk_item_entry *entr
 	}
 }
 
+static void doca_gw_dpdk_build_gre_flow_item(struct doca_dpdk_item_entry *entry,
+	struct doca_gw_match *match)
+{
+	uint16_t protocol;
+	struct rte_flow_item *flow_item = entry->item;
+	struct rte_flow_item_gre *spec = &entry->item_data.gre.spec;
+
+	flow_item->type = RTE_FLOW_ITEM_TYPE_GRE;
+	protocol = doca_gw_get_l3_protol(match, INNER_MATCH);
+	spec->protocol = rte_cpu_to_be_16(protocol);
+}
+
+static int
+doca_gw_dpdk_modify_gre_key_item(struct doca_dpdk_item_entry *entry,
+						struct doca_gw_match *match)
+{
+	uint32_t *spec = &entry->item_data.gre_key.spec;
+
+	if (match->tun.gre.key)
+		*spec = match->tun.gre.key;
+	return 0;
+}
+
+static void doca_gw_dpdk_build_gre_key_flow_item(struct doca_dpdk_item_entry *entry,
+			struct doca_gw_match *match)
+{
+	struct rte_flow_item *flow_item = entry->item;
+	uint32_t *spec = &entry->item_data.gre_key.spec;
+	uint32_t *mask = &entry->item_data.gre_key.mask;
+
+	flow_item->type = RTE_FLOW_ITEM_TYPE_GRE_KEY;
+	if (!match->tun.gre.key)
+		return;
+	*spec = rte_cpu_to_be_32(match->tun.gre.key);
+	*mask = UINT32_MAX;
+	flow_item->spec = spec;
+	flow_item->mask = mask;
+	if (match->tun.gre.key == UINT32_MAX) {
+		entry->flags |= DOCA_MODIFY_GRE_KEY;
+		entry->modify_item = doca_gw_dpdk_modify_gre_key_item;
+	}
+}
+
 static void doca_gw_dpdk_build_inner_eth_flow_item(struct doca_dpdk_item_entry *entry,
 	struct doca_gw_match *match)
 {
@@ -394,6 +438,10 @@ static int doca_gw_dpdk_build_item(struct doca_gw_match *match,
 			doca_gw_dpdk_build_vxlan_flow_item(NEXT_ITEM, match);
 			doca_gw_dpdk_build_inner_eth_flow_item(NEXT_ITEM, match);
 			break;
+		case DOCA_TUN_GRE:
+			doca_gw_dpdk_build_gre_flow_item(NEXT_ITEM, match);
+			doca_gw_dpdk_build_gre_key_flow_item(NEXT_ITEM, match);
+			break;
 		default:
 			err->type = DOCA_ERROR_UNSUPPORTED;
 			DOCA_LOG_INFO("not support type:%x\n", match->tun.type);
@@ -488,11 +536,31 @@ doca_gw_dpdk_build_vxlan_header(uint8_t **header,
 	*header += sizeof(vxlan_hdr);
 }
 
+static void
+doca_gw_dpdk_build_gre_header(uint8_t **header,
+		struct doca_gw_pipeline_cfg *cfg)
+{
+	uint32_t *key_data;
+	uint16_t protocol;
+	struct rte_gre_hdr gre_hdr;
+
+	memset(&gre_hdr, 0, sizeof(struct rte_gre_hdr));
+	gre_hdr.k = 1;
+	protocol = doca_gw_get_l3_protol(cfg->match, INNER_MATCH);
+	gre_hdr.proto = rte_cpu_to_be_16(protocol);
+	memcpy(*header, &gre_hdr, sizeof(gre_hdr));
+	*header += sizeof(gre_hdr);
+	key_data = (uint32_t *)(*header);
+	*key_data = cfg->match->tun.gre.key;
+	*header += sizeof(uint32_t);
+}
+
 struct endecap_layer doca_endecap_layers[] = {
 	{FILL_ETH_HDR,		doca_gw_dpdk_build_ether_header},
 	{FILL_IPV4_HDR,		doca_gw_dpdk_build_ipv4_header},
 	{FILL_UDP_HDR,		doca_gw_dpdk_build_udp_header},
 	{FILL_VXLAN_HDR,	doca_gw_dpdk_build_vxlan_header},
+	{FILL_GRE_HDR,		doca_gw_dpdk_build_gre_header},	
 };
 
 static void
@@ -510,32 +578,37 @@ doca_gw_dpdk_build_endecap_data(uint8_t **header,
 	}
 }
 
-static void doca_gw_dpdk_build_vxlandecap_action(struct doca_dpdk_action_entry *entry,
-									struct doca_gw_pipeline_cfg *cfg)
+static void doca_gw_dpdk_build_decap_action(struct doca_dpdk_action_entry *entry,
+									struct doca_gw_pipeline_cfg *cfg, uint8_t decap_layer)
 {
-	uint8_t *header, decap_layer;
+	uint8_t *header;
 	struct rte_flow_action *action = entry->action;
-	struct doca_dpdk_action_rawdecap_data *vxlan_decap;
+	struct doca_dpdk_action_rawdecap_data *decap;
 
-	decap_layer = FILL_ETH_HDR | FILL_IPV4_HDR | FILL_UDP_HDR | FILL_VXLAN_HDR;
-	vxlan_decap = &entry->action_data.rawdecap;
-	header = vxlan_decap->data;
-	vxlan_decap->conf.data = vxlan_decap->data;
+	decap = &entry->action_data.rawdecap;
+	header = decap->data;
 	doca_gw_dpdk_build_endecap_data(&header, cfg, decap_layer);
-	vxlan_decap->conf.size = header - vxlan_decap->data;
+	decap->conf.data = decap->data;
+	decap->conf.size = header - decap->data;
 	action->type = RTE_FLOW_ACTION_TYPE_RAW_DECAP;
-	action->conf = &vxlan_decap->conf;
+	action->conf = &decap->conf;
 }
 
 static int doca_gw_dpdk_build_tunnel_action(struct doca_dpdk_action_entry *entry,
 									struct doca_gw_pipeline_cfg *cfg)
 {
+	uint8_t layer;
 	struct doca_gw_match *match = cfg->match;
 
 	switch (match->tun.type) {
 		case DOCA_TUN_VXLAN:
-			doca_gw_dpdk_build_vxlandecap_action(entry, cfg);
+			layer = FILL_ETH_HDR | FILL_IPV4_HDR | FILL_UDP_HDR | FILL_VXLAN_HDR;
+			doca_gw_dpdk_build_decap_action(entry, cfg, layer);
 			return 0;
+		case DOCA_TUN_GRE:
+			layer = FILL_ETH_HDR | FILL_IPV4_HDR | FILL_GRE_HDR;
+			doca_gw_dpdk_build_decap_action(entry, cfg, layer);
+			return 0;	
 		default:
 			return -1;
 	}
