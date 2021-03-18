@@ -900,7 +900,7 @@ doca_gw_dpdk_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_gw_error 
 		err->type = DOCA_ERROR_NOMORE_PIPE_RESOURCE;
 		return NULL;
 	}
-	//pipe_flow->port_id = (uint16_t)cfg->port->port_id;  
+	pipe_flow->port_id = (uint16_t)cfg->port->port_id;  
 	pipe_flow->attr.ingress = 1;
 	pipe_flow->attr.group = 1; // group 0 jump group 1
 	ret = doca_gw_dpdk_build_item(cfg->match, pipe_flow, err);
