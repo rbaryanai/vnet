@@ -26,6 +26,7 @@ enum doca_modify_flags{
 	DOCA_MODIFY_SPORT	= (1 << 5),
 	DOCA_MODIFY_DPORT	= (1 << 6),
 	DOCA_MODIFY_GRE_KEY	= (1 << 7),
+	DOCA_MODIFY_VXLAN_VNI	= (1 << 8),
 };
 
 struct doca_gw_tun {
