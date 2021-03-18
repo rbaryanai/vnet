@@ -3,6 +3,7 @@
 #include "doca_log.h"
 #include <rte_vxlan.h>
 #include <rte_ethdev.h>
+#include <rte_mtr.h>
 #include <rte_gre.h>
 
 DOCA_LOG_MODULE(doca_gw_dpdk);
@@ -784,6 +785,126 @@ static int doca_gw_dpdk_build_fwd(struct doca_gw_pipe_dpdk_flow *pipe,
 	return 0;
 }
 
+static uint32_t doca_gw_dpdk_create_meter_profile(uint16_t port_id, struct doca_gw_monitor *mon)
+{
+	int ret;
+	struct rte_mtr_error error;
+	struct rte_mtr_meter_profile mp;
+	static uint32_t meter_prof_id = 1;
+
+	memset(&mp, 0, sizeof(struct rte_mtr_meter_profile));
+	mp.alg = RTE_MTR_SRTCM_RFC2697;
+	mp.srtcm_rfc2697.cir = mon->m.cir;
+	mp.srtcm_rfc2697.cbs = mon->m.cbs;
+	mp.srtcm_rfc2697.ebs = mon->m.ebs;
+
+	ret = rte_mtr_meter_profile_add
+		(port_id, meter_prof_id, &mp, &error);
+	if (ret != 0) {
+		DOCA_LOG_ERR("Port %u create Profile id %u error(%d) message: %s\n",
+			port_id, meter_prof_id, error.type,
+			error.message ? error.message : "(no stated reason)");
+		return 0;
+	}
+	return meter_prof_id++;
+}
+
+static int
+doca_gw_dpdk_destroy_meter_profile(uint16_t port_id, uint32_t prof_id)
+{
+	struct rte_mtr_error error;
+
+	if (rte_mtr_meter_profile_delete(port_id, prof_id, &error)) {
+		DOCA_LOG_ERR("Port %u del profile %u error(%d) message: %s\n",
+			port_id, prof_id, error.type,
+			error.message ? error.message : "(no stated reason)");
+		return -1;
+	}
+	return 0;
+}
+
+static uint32_t
+doca_gw_dpdk_create_meter_rule(int port_id, uint32_t prof_id)
+{
+	int ret;
+	struct rte_mtr_params params;
+	struct rte_mtr_error error;
+	static uint32_t meter_id = 1;
+
+	memset(&params, 0, sizeof(struct rte_mtr_params));
+	params.meter_enable = 1;
+	params.stats_mask = 0xffff;
+	params.use_prev_mtr_color = 0;
+	params.dscp_table = NULL;
+
+	/*create meter*/
+	params.meter_profile_id = prof_id;
+	params.action[RTE_COLOR_GREEN] = MTR_POLICER_ACTION_COLOR_GREEN;
+	params.action[RTE_COLOR_YELLOW] = MTR_POLICER_ACTION_COLOR_YELLOW;
+	params.action[RTE_COLOR_RED] = MTR_POLICER_ACTION_DROP;
+
+	ret = rte_mtr_create(port_id, meter_id, &params, 1, &error);
+	if (ret != 0) {
+		DOCA_LOG_ERR("Port %u create meter idx(%d) error(%d) message: %s\n",
+			port_id, meter_id, error.type,
+			error.message ? error.message : "(no stated reason)");
+		return 0;
+	}
+	return meter_id++;
+}
+
+static int
+doca_gw_dpdk_destroy_meter_rule(int port_id, uint32_t mtr_id)
+{
+	struct rte_mtr_error error;
+
+	if (rte_mtr_destroy(port_id, mtr_id, &error)) {
+		DOCA_LOG_ERR("Port %u destroy meter(%d) error(%d) message: %s\n",
+			port_id, mtr_id, error.type,
+			error.message ? error.message : "(no stated reason)");
+		return -1;
+	}
+	return 0;
+}
+
+static int 
+doca_gw_dpdk_build_meter_action(uint16_t port_id, struct doca_dpdk_action_entry *entry, 
+							struct doca_gw_monitor *mon)
+{
+	struct rte_flow_action *action = entry->action;
+	struct rte_flow_action_meter *meter_conf;
+	struct doca_dpdk_action_meter_data *meter_data;
+
+	// todo: how to prevent profile create many times.
+	meter_data = &entry->action_data.meter;
+	meter_data->prof_id = doca_gw_dpdk_create_meter_profile(port_id, mon);
+	if (!meter_data->prof_id)
+		return -1;
+	meter_conf = &meter_data->conf;
+	meter_conf->mtr_id = doca_gw_dpdk_create_meter_rule(port_id, meter_data->prof_id);
+	if (!meter_conf->mtr_id)
+		return -1;
+	action->type = RTE_FLOW_ACTION_TYPE_METER;
+	action->conf = meter_conf;
+	return 0;
+}
+
+static int
+doca_gw_dpdk_build_monitor_action(struct doca_gw_pipe_dpdk_flow *pipe, 
+							struct doca_gw_monitor *mon)
+{
+	uint16_t port_id = pipe->port_id;
+	struct doca_dpdk_action_entry *entry;
+
+	if (mon->flags & DOCA_GW_METER) {
+		entry = &pipe->action_entry[pipe->nb_actions++];
+		if (doca_gw_dpdk_build_meter_action(port_id, entry, mon))
+			return -1;
+	}
+	//todo:  count/aging...
+	return 0;
+}
+
 static int
 doca_gw_dpdk_modify_pipe_match(struct doca_gw_pipe_dpdk_flow *pipe,
 	struct doca_gw_match *match)
@@ -902,7 +1023,7 @@ doca_gw_dpdk_create_def_queue(uint16_t port_id)
 struct rte_flow *
 doca_gw_dpdk_pipe_create_flow(struct doca_gw_pipe_dpdk_flow *pipe,
 					struct doca_gw_match *match, struct doca_gw_actions *actions,
-					__rte_unused struct doca_gw_monitor *mon, struct doca_fwd_table_cfg *cfg,
+					struct doca_gw_monitor *mon, struct doca_fwd_table_cfg *cfg,
 					__rte_unused struct doca_gw_error *err)
 {
 	DOCA_LOG_INFO("pip create flow:\n");
@@ -916,6 +1037,11 @@ doca_gw_dpdk_pipe_create_flow(struct doca_gw_pipe_dpdk_flow *pipe,
 	}
 	if (doca_gw_dpdk_modify_pipe_actions(pipe, actions)) {
 		DOCA_LOG_ERR("modify pipe action fail.\n");
+		return NULL;
+	}
+	if (mon->flags != DOCA_GW_NONE
+		&& doca_gw_dpdk_build_monitor_action(pipe, mon)) {
+		DOCA_LOG_ERR("create monitor action fail.\n");
 		return NULL;
 	}
 	/*if different fwd action, need over write this action[x] ??*/
