@@ -606,6 +606,7 @@ static int gw_init(void *p)
 {
     int queues = *((int *)p);
     int ret = 0;
+
     ret |= gw_create();
     ret |= gw_init_lb(ret);
     ret |= gw_init_doca_ports_and_pipes(ret, queues);
@@ -616,6 +617,8 @@ static int gw_init(void *p)
 //TBD: clean all
 static int gw_destroy(void)
 {
+
+    doca_ft_destroy(gw_ins->ft);
     return 0;
 }
 
@@ -682,7 +685,7 @@ int gw_handle_new_flow(struct doca_pkt_info *pinfo, struct doca_ft_user_ctx **ct
             // add flow to pipeline
             break;
         case GW_BYPASS_L4:
-            DOCA_LOG_INFO("adding entry no tun");
+            DOCA_LOG_INFO("adding entry no pipeline");
             if (!doca_ft_add_new(gw_ins->ft, pinfo,ctx)) {
                 DOCA_LOG_DBG("failed create new entry");
                 return -1;

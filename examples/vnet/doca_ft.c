@@ -118,7 +118,6 @@ static void * doca_ft_aging_main(void *void_ptr)
     }
 
     return NULL;
-
 }
 
 /**
@@ -318,7 +317,7 @@ void doca_ft_destroy(struct doca_ft *ft)
             first = &ft->buckets[i].head;
             LIST_FOREACH(node, first, next) {
                 LIST_REMOVE(node, next);
-                free(node);
+                _doca_ft_destory_flow(ft, &node->key);
                 continue; 
             }
         } while (0);

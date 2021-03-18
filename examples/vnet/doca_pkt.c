@@ -4,6 +4,7 @@
 #include "rte_tcp.h"
 #include "rte_udp.h"
 #include "rte_gre.h"
+#include "rte_gtp.h"
 #include "rte_vxlan.h"
 
 #include "doca_pkt.h"
@@ -12,6 +13,9 @@
 #define GW_VARIFY_LEN(pkt_len, off) if (off > pkt_len) { \
                                             return -1; \
                                             }
+#define DOCA_GTP_ESPN_FLAGS_ON(p) (p & 0x7)
+#define DOCA_GTP_EXT_FLAGS_ON(p)  (p & 0x4)
+
 DOCA_LOG_MODULE(doca_pkt)
 
 uint32_t doca_pinfo_outer_ipv4_dst(struct doca_pkt_info *pinfo)
@@ -193,11 +197,12 @@ static int doca_parse_is_tun(struct doca_pkt_info *pinfo)
 
    if ( pinfo->outer.l4_type == IPPROTO_UDP ) {
         struct rte_udp_hdr *udphdr = (struct rte_udp_hdr *) pinfo->outer.l4;
+        uint8_t *udp_data =  pinfo->outer.l4 + sizeof(struct rte_udp_hdr);
         switch ( rte_cpu_to_be_16(udphdr->dst_port)){
             case GW_VXLAN_PORT:
                 {
                     // this is vxlan
-                    struct rte_vxlan_gpe_hdr *vxlanhdr = (struct rte_vxlan_gpe_hdr *) (pinfo->outer.l4 + sizeof(struct rte_udp_hdr));
+                    struct rte_vxlan_gpe_hdr *vxlanhdr = (struct rte_vxlan_gpe_hdr *) udp_data;
                     if (vxlanhdr->vx_flags & 0x08) {
                         //TODO: need to check if this gpe
                         pinfo->tun_type = APP_TUN_VXLAN;
@@ -208,6 +213,25 @@ static int doca_parse_is_tun(struct doca_pkt_info *pinfo)
                 }
             break;
             case DOCA_GTPU_PORT:
+                {
+                    int off = sizeof(struct rte_gtp_hdr) + sizeof(struct rte_udp_hdr);
+                    struct rte_gtp_hdr *gtphdr = (struct rte_gtp_hdr *) udp_data;
+                    pinfo->tun_type = APP_TUN_GTPU;
+                    pinfo->tun.vni = gtphdr->teid;
+                    pinfo->tun.gtp.msg_type = gtphdr->msg_type;
+                    pinfo->tun.gtp.flags = gtphdr->gtp_hdr_info;
+                    pinfo->tun.l2   = false;
+
+                    if (DOCA_GTP_ESPN_FLAGS_ON(pinfo->tun.gtp.flags)) {
+                        off+=4; /* if want of the bit is on there is another 4 bytes */
+                        //TODO: continue parsing
+                    }
+
+                    printf("GTP tun = %u\n", rte_cpu_to_be_32(pinfo->tun.vni));
+
+                    return off;
+                }
+            break;
             default:
                 return 0;
         }
@@ -259,7 +283,11 @@ int doca_parse_packet(uint8_t *data, int len, struct doca_pkt_info *pinfo)
             if (doca_parse_pkt_format(data + inner_off , len - inner_off, pinfo->tun.l2, &pinfo->inner)) 
                 return -1;
             break;
-
+        case APP_TUN_GTPU:
+            inner_off = (pinfo->outer.l4 - data) + off;
+            if (doca_parse_pkt_format(data + inner_off , len - inner_off, pinfo->tun.l2, &pinfo->inner)) 
+                return -1;
+        break;    
         default:
             break;
     }

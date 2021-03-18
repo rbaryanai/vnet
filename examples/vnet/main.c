@@ -98,17 +98,15 @@ gw_process_pkts(void *p)
                     if (nb_rx) {
                         for (j = 0; j < nb_rx; j++) {
                             memset(&pinfo,0, sizeof(struct doca_pkt_info));
-							doca_dump_rte_mbuff("recv mbuff:", mbufs[j]);
+                            doca_dump_rte_mbuff("recv mbuff:", mbufs[j]);
                             if(!doca_parse_packet(VNF_PKT_L2(mbufs[j]),VNF_PKT_LEN(mbufs[j]), &pinfo)){
                                 pinfo.orig_port_id = mbufs[j]->port;
                                 if (pinfo.outer.l3_type == 4) {
-
                                     vnf->doca_vnf_process_pkt(&pinfo);
                                     if(ph) {
                                         doca_pcap_write(ph,pinfo.outer.l2, pinfo.len, gw_get_time_usec(), 0); 
                                     }
                                     vnf_adjust_mbuf(mbufs[j], &pinfo);
-                                    //gw_handle_packet(&pinfo);
                                 }
                             }
                             rte_eth_tx_burst((mbufs[j]->port == 0) ? 1 : 0, params->queues[port_id], &mbufs[j], 1);
