@@ -44,7 +44,7 @@ DOCA_LOG_MODULE(GW)
 #define GW_DEFAULT_CIR (100000000/8)
 #define GW_DEFAULT_CBS (GW_DEFAULT_CIR << 4)
 
-static enum doca_gw_tun_type gw_tun_type = DOCA_TUN_VXLAN;
+static enum doca_gw_tun_type gw_tun_type = DOCA_TUN_GRE;
 
 static void gw_aged_flow_cb(struct doca_ft_user_ctx *ctx);
 static void gw_hw_aging_cb(void);
@@ -441,6 +441,10 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_inf
     //actions.mod_dst_port = 1234; 
     //actions.mod_src_port = 4321;
     //TODO: add context
+    monitor.flags |= DOCA_GW_METER;
+    monitor.m.cir = 100 * 1000 / 8;// 100k
+    monitor.m.cbs = monitor.m.cir / 8;
+    monitor.m.ebs = 0;
     return doca_gw_pipeline_add_entry(0, pipeline, &match, &actions, &monitor,
                                       sw_rss_fwd_tbl_port[pinfo->orig_port_id], &err);
 }

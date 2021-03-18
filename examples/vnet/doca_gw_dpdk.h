@@ -51,6 +51,18 @@ struct doca_dpdk_item_vxlan_data {
 	struct rte_flow_item_vxlan mask;
 };
 
+struct doca_dpdk_item_gre_data {
+	struct rte_flow_item_gre spec;
+	struct rte_flow_item_gre last;
+	struct rte_flow_item_gre mask;
+};
+
+struct doca_dpdk_item_gre_key_data {
+	uint32_t spec;
+	uint32_t last;
+	uint32_t mask;
+};
+
 struct doca_dpdk_item_udp_data {
 	uint8_t match_layer;
 	struct rte_flow_item_udp spec;
@@ -74,6 +86,8 @@ struct doca_gw_item_data {
 		struct doca_dpdk_item_vxlan_data vxlan;
 		struct doca_dpdk_item_tcp_data tcp;
 		struct doca_dpdk_item_udp_data udp;
+		struct doca_dpdk_item_gre_data gre;
+		struct doca_dpdk_item_gre_key_data gre_key;
 	};
 };
 
@@ -164,6 +178,7 @@ enum DOCA_DECAP_HDR {
 	FILL_IPV4_HDR = (1 << 1),
 	FILL_UDP_HDR = (1 << 2),
 	FILL_VXLAN_HDR = (1 << 3),
+	FILL_GRE_HDR = (1 << 4),
 };
 
 /*need move to util file ??*/

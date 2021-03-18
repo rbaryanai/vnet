@@ -177,7 +177,7 @@ static int doca_parse_is_tun(struct doca_pkt_info *pinfo)
         // need to now how to parse
         if (gre_hdr->k) {
             optional_off+=4;
-            pinfo->tun.vni  = *(uint32_t *)(pinfo->outer.l4 + sizeof(struct rte_gre_hdr));
+            pinfo->tun.vni  = rte_be_to_cpu_32(*(uint32_t *)(pinfo->outer.l4 + sizeof(struct rte_gre_hdr)));
             pinfo->tun.l2   = true;
         }
 
