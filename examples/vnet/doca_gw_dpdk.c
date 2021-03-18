@@ -254,7 +254,7 @@ static void doca_gw_dpdk_build_vxlan_flow_item(struct doca_dpdk_item_entry *entr
 	flow_item->spec = spec;
 	flow_item->mask = mask;
 	if (match->tun.vxlan.tun_id == UINT32_MAX) {
-		entry->flags |= DOCA_MODIFY_VLAN_ID;
+		entry->flags |= DOCA_MODIFY_VXLAN_VNI;
 		entry->modify_item = doca_gw_dpdk_modify_vxlan_item;
 	}
 }
