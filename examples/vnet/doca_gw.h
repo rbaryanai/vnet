@@ -98,6 +98,12 @@ struct doca_gw_port_cfg {
     uint16_t priv_data_size;       /* user private data */
 };
 
+struct doca_gw_port
+{
+    uint32_t port_id;
+    uint8_t  user_data[0];
+};
+
 /**
  * @brief - matcher
  *   - used for defintion of a pipeline
