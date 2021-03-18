@@ -362,7 +362,8 @@ struct doca_gw_port *gw_init_doca_port(struct gw_port_cfg *port_cfg)
     doca_cfg_port.type = DOCA_GW_PORT_DPDK_BY_ID;
     doca_cfg_port.queues = port_cfg->n_queues;
     doca_cfg_port.devargs = port_id_str;
-    doca_cfg_port.priv_data_size = sizeof(struct gw_port_cfg);
+	//struct doca_gw_port should include gw_port_cfg ?
+    doca_cfg_port.priv_data_size = sizeof(struct gw_port_cfg) + doca_gw_dpdk_private_data();
 
     if (port_cfg->port_id >= GW_MAX_PORT_ID) {
         DOCA_LOG_ERR("port id exceeds max ports id:%d",GW_MAX_PORT_ID);

@@ -7,6 +7,7 @@
 
 DOCA_LOG_MODULE(doca_gw)
 
+//can move those define to doca_gw.h ?
 struct doca_fwd_tbl {
     const char * name;
     void * handler;
@@ -97,29 +98,41 @@ int doca_gw_rm_entry(uint16_t pipe_queue, struct doca_gw_pipelne_entry *entry)
  */
 struct doca_gw_port * doca_gw_port_start(struct doca_gw_port_cfg *cfg, struct doca_gw_error *err)
 {
-    struct doca_gw_port *port = (struct doca_gw_port *) malloc(sizeof(struct doca_gw_port)+cfg->priv_data_size);
+	int ret = 0;
+    struct doca_gw_port *port;
 
+	if (cfg == NULL) {
+		err->message = "port config is null.";
+		return NULL;
+	}
+	port = (struct doca_gw_port *) malloc(sizeof(struct doca_gw_port) + cfg->priv_data_size);
     if ( port == NULL ) {
-        return NULL;
+		err->message = "alloc gw port null.";
+		return NULL;
     }
     memset(port, 0, sizeof(struct doca_gw_port));
 
-    if ( cfg != NULL ){
-        switch(cfg->type) {
-            case DOCA_GW_PORT_DPDK:
-                DOCA_LOG_INFO("port is dpdk, matching port id");
-                // init all required data sturcures for port.
-                break;
-            case DOCA_GW_PORT_DPDK_BY_ID:
-                DOCA_LOG_INFO("new doca port type:dpdk port id:%s", cfg->devargs);
-                break;
-            default:
-                DOCA_LOG_ERR("unsupported port type");
-                err->message = "unsupported port type";
-                free(port);
-                port = NULL;
-        }
-    }
+	switch(cfg->type) {
+		case DOCA_GW_PORT_DPDK:
+			DOCA_LOG_INFO("port is dpdk, matching port id");
+			// init all required data sturcures for port.
+			break;
+		case DOCA_GW_PORT_DPDK_BY_ID:
+			DOCA_LOG_INFO("new doca port type:dpdk port id:%s", cfg->devargs);
+			ret = doca_gw_dpdk_start_port(port->port_id, cfg, (struct doca_dpdk_port*)port->user_data);
+			if (ret)
+				err->message = "start dpdk port flow error";
+			break;
+		default:
+			DOCA_LOG_ERR("unsupported port type");
+			err->message = "unsupported port type";
+			ret = -1;
+			break;
+	}
+	if (ret) {
+		free(port);
+		port = NULL;
+	}
     return port;
 }
 

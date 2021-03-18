@@ -19,6 +19,11 @@ enum ACTION_DIRECTION {
 	DOCA_DST,
 };
 
+struct doca_dpdk_port {
+	struct rte_flow *root;
+	struct rte_flow *default_match; //queue or rss for the default match packets
+};
+
 struct doca_dpdk_item_eth_data {
 	struct rte_flow_item_eth spec;
 	struct rte_flow_item_eth last;
@@ -290,6 +295,7 @@ doca_gw_dpdk_pipe_create_flow(struct doca_gw_pipe_dpdk_flow *pipe,
 					struct doca_gw_monitor *mon, struct doca_fwd_table_cfg *cfg,
 					struct doca_gw_error *err);
 
+uint16_t doca_gw_dpdk_private_data(void);
 int doca_gw_dpdk_init_port(uint16_t port_id);
 
 #endif

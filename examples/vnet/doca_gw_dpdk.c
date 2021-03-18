@@ -26,9 +26,6 @@ void doca_gw_init_dpdk(__rte_unused struct doca_gw_cfg *cfg)
 		memset(pipe_flow, 0x0, sizeof(struct doca_gw_pipe_dpdk_flow));
 		LIST_INSERT_HEAD(&pipe_flows.free_head, pipe_flow, free_list);
 	}
-	//todo, need remove to init_port 
-	doca_gw_dpdk_init_port(0);
-	doca_gw_dpdk_init_port(1);
 }
 
 /**
@@ -998,7 +995,7 @@ doca_gw_dpdk_create_root_jump(uint16_t port_id)
 
 /*default match, -> queue[0]*/
 static struct rte_flow*
-doca_gw_dpdk_create_def_queue(uint16_t port_id)
+doca_gw_dpdk_create_defaut_match(uint16_t port_id, struct doca_fwd_table_cfg *fwd)
 {
 	struct rte_flow_attr attr;
 	struct rte_flow_item items[MAX_ITEMS];
@@ -1057,15 +1054,15 @@ doca_gw_dpdk_pipe_create_flow(struct doca_gw_pipe_dpdk_flow *pipe,
 
 /*todo , how to manager root/queue flows for one port.*/
 int
-doca_gw_dpdk_init_port(uint16_t port_id)
+doca_gw_dpdk_start_port(uint16_t port_id, struct doca_gw_port_cfg *cfg, struct doca_dpdk_port *port)
 {
-	struct rte_flow *root,*queue;
-
-	root = doca_gw_dpdk_create_root_jump(port_id);
-	if(root == NULL)
+	struct doca_fwd_table_cfg fwd = {};
+	port->root = doca_gw_dpdk_create_root_jump(port_id);
+	if(port->root == NULL)
 		return -1;
-	queue = doca_gw_dpdk_create_def_queue(port_id);
-	if(queue == NULL)
+	//cfg->queues: nb_q, means rss , temporary using fwd ???
+	port->default_match = doca_gw_dpdk_create_defaut_match(port_id, &fwd); //cfg->queues
+	if(port->default_match == NULL)
 		return -1;
 	return 0;
 }
@@ -1112,4 +1109,7 @@ free_pipe:
 	return NULL;
 }
 
-
+uint16_t doca_gw_dpdk_private_data(void)
+{
+	return sizeof(struct doca_dpdk_port);
+}

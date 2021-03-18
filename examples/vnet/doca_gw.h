@@ -93,7 +93,7 @@ enum doca_gw_port_type {
 
 struct doca_gw_port_cfg {
     enum doca_gw_port_type type;   /* mapping type of port */
-    uint16_t queues;                
+    uint16_t queues;				//only can do nb_queue rss, can use doca_fwd_table_cfg  ?               
     const char *devargs;           /* specific per port type cfg */
     uint16_t priv_data_size;       /* user private data */
 };
