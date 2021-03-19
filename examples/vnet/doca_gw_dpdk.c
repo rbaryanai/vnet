@@ -10,8 +10,8 @@ DOCA_LOG_MODULE(doca_gw_dpdk);
 
 #define DOCA_GET_SRC_IP(match, type) ((type == OUTER_MATCH) ? match->out_src_ip : match->in_src_ip) 
 #define DOCA_GET_DST_IP(match, type) ((type == OUTER_MATCH) ? match->out_dst_ip : match->in_dst_ip)
-#define DOCA_GET_SRC_PORT(match, type) ((type == OUTER_MATCH) ? match->out_src_port : match->in_src_port)
-#define DOCA_GET_DST_PORT(match, type) ((type == OUTER_MATCH) ? match->out_dst_port : match->in_dst_port)
+#define DOCA_GET_SPORT(match, type) ((type == OUTER_MATCH) ? match->out_src_port : match->in_src_port)
+#define DOCA_GET_DPORT(match, type) ((type == OUTER_MATCH) ? match->out_dst_port : match->in_dst_port)
 
 struct doca_gw_pipe_dpdk_flow_list pipe_flows;
 
@@ -99,7 +99,7 @@ doca_gw_dpdk_build_eth_flow_item(struct doca_dpdk_item_entry *entry,
 	}
 	if (match->vlan_id)
 		spec->has_vlan = 1;//will debug if this set is need.
-	spec->type = rte_cpu_to_be_16(doca_gw_get_l3_protol(match, OUTER_MATCH));
+	spec->type = doca_gw_get_l3_protol(match, OUTER_MATCH);
 	mask->type = UINT16_MAX;
 	flow_item->spec = spec;
 	flow_item->mask = mask;
@@ -262,13 +262,11 @@ static void doca_gw_dpdk_build_vxlan_flow_item(struct doca_dpdk_item_entry *entr
 static void doca_gw_dpdk_build_gre_flow_item(struct doca_dpdk_item_entry *entry,
 	struct doca_gw_match *match)
 {
-	uint16_t protocol;
 	struct rte_flow_item *flow_item = entry->item;
 	struct rte_flow_item_gre *spec = &entry->item_data.gre.spec;
 
 	flow_item->type = RTE_FLOW_ITEM_TYPE_GRE;
-	protocol = doca_gw_get_l3_protol(match, INNER_MATCH);
-	spec->protocol = rte_cpu_to_be_16(protocol);
+	spec->protocol = doca_gw_get_l3_protol(match, INNER_MATCH);
 }
 
 static int
@@ -292,7 +290,7 @@ static void doca_gw_dpdk_build_gre_key_flow_item(struct doca_dpdk_item_entry *en
 	flow_item->type = RTE_FLOW_ITEM_TYPE_GRE_KEY;
 	if (!match->tun.gre.key)
 		return;
-	*spec = rte_cpu_to_be_32(match->tun.gre.key);
+	*spec = match->tun.gre.key;
 	*mask = UINT32_MAX;
 	flow_item->spec = spec;
 	flow_item->mask = mask;
@@ -310,7 +308,7 @@ static void doca_gw_dpdk_build_inner_eth_flow_item(struct doca_dpdk_item_entry *
 	struct rte_flow_item_eth *mask = &entry->item_data.eth.mask;
 
 	flow_item->type = RTE_FLOW_ITEM_TYPE_ETH;
-	spec->type = rte_cpu_to_be_16(doca_gw_get_l3_protol(match, OUTER_MATCH));
+	spec->type = doca_gw_get_l3_protol(match, OUTER_MATCH);
 	mask->type = UINT16_MAX;
 	flow_item->spec = spec;
 	flow_item->mask = mask;
@@ -327,14 +325,14 @@ doca_gw_dpdk_modify_tcp_flow_item(struct doca_dpdk_item_entry *entry,
 	struct doca_gw_match *match)
 {
 	uint8_t layer = entry->item_data.tcp.match_layer;
-	uint16_t src_port = DOCA_GET_SRC_PORT(match, layer);
-	uint16_t dst_port = DOCA_GET_DST_PORT(match, layer);
+	rte_be16_t src_port = DOCA_GET_SPORT(match, layer);
+	rte_be16_t dst_port = DOCA_GET_DPORT(match, layer);
 	struct rte_flow_item_tcp *spec = &entry->item_data.tcp.spec;
 
 	if ((entry->flags & DOCA_MODIFY_SPORT) && src_port)
-		spec->hdr.src_port = rte_cpu_to_be_16(src_port);
+		spec->hdr.src_port = src_port;
 	if ((entry->flags & DOCA_MODIFY_DPORT) && dst_port)
-		spec->hdr.dst_port = rte_cpu_to_be_16(dst_port);
+		spec->hdr.dst_port = dst_port;
 	return 0;
 }
 
@@ -342,21 +340,21 @@ static void doca_gw_dpdk_build_tcp_flow_item(struct doca_dpdk_item_entry *entry,
 			struct doca_gw_match *match, uint8_t type)
 {
 	struct rte_flow_item *item = entry->item;
-	uint16_t src_port = DOCA_GET_SRC_PORT(match, type);
-	uint16_t dst_port = DOCA_GET_DST_PORT(match, type);
+	rte_be16_t src_port = DOCA_GET_SPORT(match, type);
+	rte_be16_t dst_port = DOCA_GET_DPORT(match, type);
 	struct rte_flow_item_tcp *spec = &entry->item_data.tcp.spec;
 	struct rte_flow_item_tcp *mask = &entry->item_data.tcp.mask;
 
 	entry->item_data.tcp.match_layer = type;
 	item->type = RTE_FLOW_ITEM_TYPE_TCP;
 	if (src_port) {
-		spec->hdr.src_port = rte_cpu_to_be_16(src_port);
+		spec->hdr.src_port = src_port;
 		mask->hdr.src_port = UINT16_MAX;
 		if (src_port == UINT16_MAX)
 			entry->flags |= DOCA_MODIFY_SPORT;
 	}
 	if (dst_port) {
-		spec->hdr.dst_port = rte_cpu_to_be_16(dst_port);
+		spec->hdr.dst_port = dst_port;
 		mask->hdr.dst_port = UINT16_MAX;
 		if (dst_port == UINT16_MAX)
 			entry->flags |= DOCA_MODIFY_DPORT;
@@ -374,14 +372,14 @@ doca_gw_dpdk_modify_udp_flow_item(struct doca_dpdk_item_entry *entry,
 	struct doca_gw_match *match)
 {
 	uint8_t layer = entry->item_data.udp.match_layer;
-	uint16_t src_port = DOCA_GET_SRC_PORT(match, layer);
-	uint16_t dst_port = DOCA_GET_DST_PORT(match, layer);
+	rte_be16_t src_port = DOCA_GET_SPORT(match, layer);
+	rte_be16_t dst_port = DOCA_GET_DPORT(match, layer);
 	struct rte_flow_item_udp *spec = (struct rte_flow_item_udp *)((uintptr_t)entry->item->spec);
 
 	if ((entry->flags & DOCA_MODIFY_SPORT) && src_port)
-		spec->hdr.src_port = rte_cpu_to_be_16(src_port);
+		spec->hdr.src_port = src_port;
 	if ((entry->flags & DOCA_MODIFY_DPORT) && dst_port)
-		spec->hdr.dst_port = rte_cpu_to_be_16(dst_port);
+		spec->hdr.dst_port = dst_port;
 	return 0;
 }
 
@@ -389,21 +387,21 @@ static void doca_gw_dpdk_build_udp_flow_item(struct doca_dpdk_item_entry *entry,
 			struct doca_gw_match *match, uint8_t type)
 {
 	struct rte_flow_item *item = entry->item;
-	uint16_t src_port = DOCA_GET_SRC_PORT(match, type);
-	uint16_t dst_port = DOCA_GET_DST_PORT(match, type);
+	rte_be16_t src_port = DOCA_GET_SPORT(match, type);
+	rte_be16_t dst_port = DOCA_GET_DPORT(match, type);
 	struct rte_flow_item_udp *spec = &entry->item_data.udp.spec;
 	struct rte_flow_item_udp *mask = &entry->item_data.udp.mask;
 
 	entry->item_data.udp.match_layer = type;
 	item->type = RTE_FLOW_ITEM_TYPE_UDP;
 	if (src_port) {
-		spec->hdr.src_port = rte_cpu_to_be_16(src_port);
+		spec->hdr.src_port = src_port;
 		mask->hdr.src_port = UINT16_MAX;
 		if (src_port == UINT16_MAX)
 			entry->flags |= DOCA_MODIFY_SPORT;
 	}
 	if (dst_port) {
-		spec->hdr.dst_port = rte_cpu_to_be_16(dst_port);
+		spec->hdr.dst_port = dst_port;
 		mask->hdr.dst_port = UINT16_MAX;
 		if (dst_port == UINT16_MAX)
 			entry->flags |= DOCA_MODIFY_DPORT;
@@ -483,7 +481,7 @@ doca_gw_dpdk_build_ether_header(uint8_t **header, struct doca_gw_pipeline_cfg *c
 		rte_ether_addr_copy((const struct rte_ether_addr*)match->out_src_mac, &eth_hdr.s_addr);
 	if (!doca_is_mac_zero(match->out_src_mac))
 		rte_ether_addr_copy((const struct rte_ether_addr*)match->out_src_mac, &eth_hdr.d_addr);
-	eth_hdr.ether_type = rte_cpu_to_be_16(doca_gw_get_l3_protol(match, OUTER_MATCH));
+	eth_hdr.ether_type = doca_gw_get_l3_protol(match, OUTER_MATCH);
 	memcpy(*header, &eth_hdr, sizeof(eth_hdr));
 	*header += sizeof(eth_hdr);
 	if (match->vlan_id) {
@@ -502,9 +500,9 @@ doca_gw_dpdk_build_ipv4_header(uint8_t **header,
 
 	memset(&ipv4_hdr, 0, sizeof(struct rte_ipv4_hdr));
 	if (!doca_is_ip_zero(&cfg->match->out_src_ip))
-		ipv4_hdr.src_addr = rte_cpu_to_be_16(cfg->match->out_src_ip.a.ipv4_addr);
+		ipv4_hdr.src_addr = cfg->match->out_src_ip.a.ipv4_addr;
 	if (!doca_is_ip_zero(&cfg->match->out_dst_ip))
-		ipv4_hdr.dst_addr = rte_cpu_to_be_16(cfg->match->out_dst_ip.a.ipv4_addr);
+		ipv4_hdr.dst_addr = cfg->match->out_dst_ip.a.ipv4_addr;
 	if (!cfg->match->out_l4_type)
 		ipv4_hdr.next_proto_id = cfg->match->out_l4_type;
 	memcpy(*header, &ipv4_hdr, sizeof(ipv4_hdr));
@@ -518,9 +516,9 @@ doca_gw_dpdk_build_udp_header(uint8_t **header, struct doca_gw_pipeline_cfg *cfg
 
 	memset(&udp_hdr, 0, sizeof(struct rte_flow_item_udp));
 	if (cfg->match->out_src_port)
-		udp_hdr.src_port = rte_cpu_to_be_16(cfg->match->out_src_port);
+		udp_hdr.src_port = cfg->match->out_src_port;
 	if (cfg->match->out_dst_port)
-		udp_hdr.dst_port = rte_cpu_to_be_16(cfg->match->out_dst_port);
+		udp_hdr.dst_port = cfg->match->out_dst_port;
 	memcpy(*header, &udp_hdr, sizeof(udp_hdr));
 	*header += sizeof(udp_hdr);
 }
@@ -542,13 +540,11 @@ doca_gw_dpdk_build_gre_header(uint8_t **header,
 		struct doca_gw_pipeline_cfg *cfg)
 {
 	uint32_t *key_data;
-	uint16_t protocol;
 	struct rte_gre_hdr gre_hdr;
 
 	memset(&gre_hdr, 0, sizeof(struct rte_gre_hdr));
 	gre_hdr.k = 1;
-	protocol = doca_gw_get_l3_protol(cfg->match, INNER_MATCH);
-	gre_hdr.proto = rte_cpu_to_be_16(protocol);
+	gre_hdr.proto = doca_gw_get_l3_protol(cfg->match, INNER_MATCH);
 	memcpy(*header, &gre_hdr, sizeof(gre_hdr));
 	*header += sizeof(gre_hdr);
 	key_data = (uint32_t *)(*header);
@@ -654,7 +650,7 @@ static int doca_gw_dpdk_modify_ipv4_addr_action(struct doca_dpdk_action_entry *e
 	ip_addr = action->type == RTE_FLOW_ACTION_TYPE_SET_IPV4_SRC?
 		&pkt_action->mod_src_ip : &pkt_action->mod_dst_ip;
 	if (!doca_is_ip_zero(ip_addr))
-		ipv4->ipv4_addr = rte_cpu_to_be_32(ip_addr->a.ipv4_addr);
+		ipv4->ipv4_addr = ip_addr->a.ipv4_addr;
 	return 0;
 }
 
@@ -666,7 +662,7 @@ static void doca_gw_dpdk_build_ipv4_addr_action(struct doca_dpdk_action_entry *e
 	struct rte_flow_action_set_ipv4 *ipv4 = &entry->action_data.ipv4.ipv4;
 
 	ip_addr = (type == DOCA_SRC? &cfg->actions->mod_src_ip : &cfg->actions->mod_dst_ip);
-	ipv4->ipv4_addr = rte_cpu_to_be_32(ip_addr->a.ipv4_addr);
+	ipv4->ipv4_addr = ip_addr->a.ipv4_addr;
 	action->type = (type == DOCA_SRC? RTE_FLOW_ACTION_TYPE_SET_IPV4_SRC : RTE_FLOW_ACTION_TYPE_SET_IPV4_DST);
 	action->conf = ipv4;
 	if (doca_is_ip_max(ip_addr))
@@ -683,7 +679,7 @@ static int doca_gw_dpdk_modify_l4_port_action(struct doca_dpdk_action_entry *ent
 	l4port = action->type == RTE_FLOW_ACTION_TYPE_SET_TP_SRC?
 		pkt_action->mod_src_port : pkt_action->mod_dst_port;
 	if (l4port)
-		set_tp->port = rte_cpu_to_be_16(l4port);
+		set_tp->port = l4port;
 	return 0;
 }
 
@@ -695,7 +691,7 @@ static void doca_gw_dpdk_build_l4_port_action(struct doca_dpdk_action_entry *ent
 	struct rte_flow_action_set_tp *set_tp = &entry->action_data.l4port.l4port;
 
 	l4port = (type == DOCA_SRC? cfg->actions->mod_src_port : cfg->actions->mod_dst_port);
-	set_tp->port = rte_cpu_to_be_16(l4port);
+	set_tp->port = l4port;
 	action->type = (type == DOCA_SRC? RTE_FLOW_ACTION_TYPE_SET_TP_SRC : RTE_FLOW_ACTION_TYPE_SET_TP_DST);
 	action->conf = set_tp;
 	if (l4port == UINT16_MAX)

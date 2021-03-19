@@ -511,15 +511,15 @@ void doca_dump_gw_actions(struct doca_gw_actions *actions)
 	if (!doca_is_mac_zero(actions->mod_src_mac))
 		doca_log_mac("\n    src-mac:",actions->mod_src_mac);
 	if (!doca_is_mac_zero(actions->mod_dst_mac))
-		doca_log_mac("\n    dst-mac:",actions->mod_dst_mac);
+		doca_log_mac("\n    dst-mac:", actions->mod_dst_mac);
 	if (!doca_is_ip_zero(&actions->mod_src_ip))
-		doca_log_ipv4("\n    src-ipv4:",actions->mod_src_ip.a.ipv4_addr);
+		doca_log_ipv4("\n    src-ipv4:", rte_be_to_cpu_32(actions->mod_src_ip.a.ipv4_addr));
 	if (!doca_is_ip_zero(&actions->mod_dst_ip))
-		doca_log_ipv4("\n    dst-ipv4:",actions->mod_dst_ip.a.ipv4_addr);
+		doca_log_ipv4("\n    dst-ipv4:", rte_be_to_cpu_32(actions->mod_dst_ip.a.ipv4_addr));
 	if (actions->mod_src_port)
-		doca_log_buff("\n    src-port:0x%x",actions->mod_src_port);
+		doca_log_buff("\n    src-port:0x%x", rte_be_to_cpu_16(actions->mod_src_port));
 	if (actions->mod_dst_port)
-		doca_log_buff("\n    dst-port:0x%x",actions->mod_dst_port);
+		doca_log_buff("\n    dst-port:0x%x", rte_be_to_cpu_16(actions->mod_dst_port));
 	DOCA_LOG_INFO("%s\n", dump_buff);
 }
 
@@ -538,36 +538,36 @@ void doca_dump_gw_match(struct doca_gw_match *match)
 	if (match->vlan_id)
 		doca_log_buff("\n  vlan-id:0x%x",match->vlan_id);
 	if (!doca_is_ip_zero(&match->out_src_ip))
-		doca_log_ipv4("\n    outer-src-ip:", match->out_src_ip.a.ipv4_addr);
+		doca_log_ipv4("\n    outer-src-ip:", rte_be_to_cpu_32(match->out_src_ip.a.ipv4_addr));
 	if (!doca_is_ip_zero(&match->out_dst_ip))
-		doca_log_ipv4("\n    outer-dst-ip:", match->out_dst_ip.a.ipv4_addr);
+		doca_log_ipv4("\n    outer-dst-ip:", rte_be_to_cpu_32(match->out_dst_ip.a.ipv4_addr));
 	if (match->out_l4_type)
 		doca_log_buff("\n    outer-l4-type:%u", match->out_l4_type);
 	if (match->out_src_port)
-		doca_log_buff("\n    outer-src-port:0x%x", match->out_src_port);
+		doca_log_buff("\n    outer-src-port:%u", rte_be_to_cpu_16(match->out_src_port));
 	if (match->out_dst_port)
-		doca_log_buff("\n    outer-dst-port:0x%x", match->out_dst_port);
+		doca_log_buff("\n    outer-dst-port:%u", rte_be_to_cpu_16(match->out_dst_port));
 	switch (match->tun.type) {
 		case DOCA_TUN_VXLAN:
-			doca_log_buff("\n    tun-type:vxlan,vni:0x%x", match->tun.vxlan.tun_id);
+			doca_log_buff("\n    tun-type:vxlan,vni:0x%x", rte_be_to_cpu_32(match->tun.vxlan.tun_id));
 			break;
 		case DOCA_TUN_GRE:
-			doca_log_buff("\n    tun-type:gre,key:0x%x", match->tun.gre.key);
+			doca_log_buff("\n    tun-type:gre,key:0x%x", rte_be_to_cpu_32(match->tun.gre.key));
 			break;
 		case DOCA_TUN_NONE:
 			doca_log_buff("\n    tun-type:none");
 			break;
 	}
 	if (!doca_is_ip_zero(&match->in_src_ip))
-		doca_log_ipv4("\n    inner-src-ip:", match->in_src_ip.a.ipv4_addr);
+		doca_log_ipv4("\n    inner-src-ip:", rte_be_to_cpu_32(match->in_src_ip.a.ipv4_addr));
 	if (!doca_is_ip_zero(&match->in_dst_ip))
-		doca_log_ipv4("\n    inner-dst-ip:", match->in_dst_ip.a.ipv4_addr);
+		doca_log_ipv4("\n    inner-dst-ip:", rte_be_to_cpu_32(match->in_dst_ip.a.ipv4_addr));
 	if (match->in_l4_type)
 		doca_log_buff("\n    inner-l4-type:%u", match->in_l4_type);
 	if (match->in_src_port)
-		doca_log_buff("\n    inner-src-port:0x%x", match->in_src_port);
+		doca_log_buff("\n    inner-src-port:0x%x", rte_be_to_cpu_16(match->in_src_port));
 	if (match->in_dst_port)
-		doca_log_buff("\n    inner-dst-port:0x%x", match->in_dst_port);
+		doca_log_buff("\n    inner-dst-port:0x%x", rte_be_to_cpu_16(match->in_dst_port));
 	DOCA_LOG_INFO("%s\n", dump_buff);
 }
 

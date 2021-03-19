@@ -257,12 +257,16 @@ doca_match_is_ipv4(struct doca_gw_match *match, uint8_t type)
 	return (ip_addr.type == DOCA_IPV4);
 }
 
-static uint16_t
+static inline rte_be16_t
 doca_gw_get_l3_protol(struct doca_gw_match *match, uint8_t type)
 {
+	uint16_t protocol;
 	if (type == OUTER_MATCH && match->vlan_id)
-		return RTE_ETHER_TYPE_VLAN;
-	return doca_match_is_ipv4(match, type)? RTE_ETHER_TYPE_IPV4 : RTE_ETHER_TYPE_IPV6;
+		protocol = RTE_ETHER_TYPE_VLAN;
+	else
+		protocol = doca_match_is_ipv4(match, type)?
+			RTE_ETHER_TYPE_IPV4 : RTE_ETHER_TYPE_IPV6;
+	return rte_cpu_to_be_16(protocol);
 }
 
 static inline bool doca_match_is_tcp(struct doca_gw_match *match)
