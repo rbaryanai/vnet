@@ -289,7 +289,8 @@ struct doca_gw_pipe_dpdk_flow*
 doca_gw_dpdk_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_gw_error *err);
 
 struct rte_flow*
-doca_gw_dpdk_pipe_create_flow(struct doca_gw_pipe_dpdk_flow *pipe,
+doca_gw_dpdk_pipe_create_flow(struct doca_gw_pipelne_entry *entry, 
+                                        struct doca_gw_pipe_dpdk_flow *pipe,
 					struct doca_gw_match *match, struct doca_gw_actions *actions,
 					struct doca_gw_monitor *mon, struct doca_fwd_table_cfg *cfg,
 					struct doca_gw_error *err);

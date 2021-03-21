@@ -98,11 +98,6 @@ struct doca_gw_port_cfg {
     uint16_t priv_data_size;       /* user private data */
 };
 
-struct doca_gw_port
-{
-    uint32_t port_id;
-    uint8_t  user_data[0];
-};
 
 /**
  * @brief - matcher
@@ -181,6 +176,7 @@ struct doca_gw_monitor {
     uint8_t flags;
     bool count;
     struct meter {
+        uint32_t id;
         uint64_t cir;
         uint64_t cbs;
     } m;
@@ -322,6 +318,23 @@ struct doca_gw_pipelne_entry *doca_gw_pipeline_add_entry(uint16_t pipe_queue,
                       struct doca_gw_pipeline *pipeline, struct doca_gw_match *match,
                       struct doca_gw_actions *actions,struct doca_gw_monitor *mod,
                       struct doca_fwd_tbl *fwd, struct doca_gw_error *err);
+
+/**
+ * @brief - default pipeline is match all, and send to SW.
+ *          RSS on all queues.
+ *
+ *          Using this flow it is allowed to change this behaviour and define
+ *          different RSS behaviour for unmatched packets.
+ *
+ * @param pipe_queue
+ * @param port 
+ * @param fwd
+ * @param err
+ *
+ * @return 0 on success and error reason for other
+ */
+int doca_gw_pipeline_update_default(uint16_t pipe_queue, struct doca_gw_port *port,
+                                    struct doca_fwd_tbl *fwd, struct doca_gw_error *err);
 
 /**
  * @brief 

@@ -1,11 +1,14 @@
 #include "doca_gw.h"
 #include "doca_log.h"
 #include "doca_gw_dpdk.h"
+#include "doca_dpdk_priv.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 DOCA_LOG_MODULE(doca_gw)
+//TODO: get it from dpdk
+#define DOCA_GW_MAX_PORTS (128)
 
 struct doca_fwd_tbl {
     const char * name;
@@ -19,6 +22,21 @@ struct doca_gw_pipeline {
     uint32_t id;
 };
 
+static struct doca_gw_port *doca_gw_used_ports[DOCA_GW_MAX_PORTS];
+
+static bool doca_gw_save_port(struct doca_gw_port *port)
+{
+    int i = 0;
+    for ( i = 0 ; i < DOCA_GW_MAX_PORTS ; i++) {
+        if (doca_gw_used_ports[i] == NULL) {
+            doca_gw_used_ports[i] = port;
+            port->idx = i;
+            return true;
+        }
+    }
+    return false;
+}
+
 uint8_t *doca_gw_port_priv_data(struct doca_gw_port *p)
 {
     return &p->user_data[0];
@@ -27,18 +45,14 @@ uint8_t *doca_gw_port_priv_data(struct doca_gw_port *p)
 int doca_gw_init(struct doca_gw_cfg *cfg,struct doca_gw_error *err)
 {
     DOCA_LOG_INFO("total sessions = %d\n",cfg->total_sessions);
-    printf("total sessions = %d\n",cfg->total_sessions);
     if (err) {
         *err = *err;
     }
-	doca_gw_init_dpdk(cfg);
+    doca_gw_init_dpdk(cfg);
+    memset(doca_gw_used_ports,0,sizeof(doca_gw_used_ports));
     return 0;
 }
 
-struct doca_gw_pipelne_entry {
-    int id;
-	void *pipe_entry;
-};
 
 /**
  * @brief 
@@ -63,7 +77,7 @@ struct doca_gw_pipelne_entry *doca_gw_pipeline_add_entry(uint16_t pipe_queue,
     if (entry == NULL)
             return NULL;
     memset(entry,0,sizeof(struct doca_gw_pipelne_entry));
-    entry->pipe_entry = doca_gw_dpdk_pipe_create_flow(pipeline->handler,
+    entry->pipe_entry = doca_gw_dpdk_pipe_create_flow(entry, pipeline->handler,
 		match, actions, mon, &fwd->cfg, err);
     if (entry->pipe_entry == NULL) {
             DOCA_LOG_INFO("create pip entry fail.\n");
@@ -103,6 +117,8 @@ struct doca_gw_port * doca_gw_port_start(struct doca_gw_port_cfg *cfg, struct do
         return NULL;
     }
     memset(port, 0, sizeof(struct doca_gw_port));
+    if (!doca_gw_save_port(port)) 
+        goto fail_port_start;
 
     if ( cfg != NULL ){
         switch(cfg->type) {
@@ -111,16 +127,20 @@ struct doca_gw_port * doca_gw_port_start(struct doca_gw_port_cfg *cfg, struct do
                 // init all required data sturcures for port.
                 break;
             case DOCA_GW_PORT_DPDK_BY_ID:
+                //TODO: need to parse devargs
                 DOCA_LOG_INFO("new doca port type:dpdk port id:%s", cfg->devargs);
+                port->port_id = atoi(cfg->devargs);
                 break;
             default:
                 DOCA_LOG_ERR("unsupported port type");
                 err->message = "unsupported port type";
-                free(port);
-                port = NULL;
+                goto fail_port_start;
         }
     }
     return port;
+fail_port_start:
+    free(port);
+    return NULL;
 }
 
 /**
