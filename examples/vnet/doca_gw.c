@@ -19,12 +19,6 @@ struct doca_gw_pipeline {
     uint32_t id;
 };
 
-struct doca_gw_port
-{
-    uint32_t port_id;
-    uint8_t  user_data[0];
-};
-
 uint8_t *doca_gw_port_priv_data(struct doca_gw_port *p)
 {
     return &p->user_data[0];

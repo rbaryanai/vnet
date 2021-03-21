@@ -44,7 +44,7 @@ DOCA_LOG_MODULE(GW)
 #define GW_DEFAULT_CIR (100000000/8)
 #define GW_DEFAULT_CBS (GW_DEFAULT_CIR << 4)
 
-static enum doca_gw_tun_type gw_tun_type = DOCA_TUN_VXLAN;
+static enum doca_gw_tun_type gw_tun_type = DOCA_TUN_GRE;
 
 static void gw_aged_flow_cb(struct doca_ft_user_ctx *ctx);
 static void gw_hw_aging_cb(void);
@@ -154,7 +154,7 @@ void gw_build_tun_match(struct doca_gw_match *match)
     switch (gw_tun_type) {
         case DOCA_TUN_VXLAN:
             match->out_l4_type = IPPROTO_UDP;
-            match->out_dst_port = DOCA_VXLAN_DEFAULT_PORT; // VXLAN (change to enum/define)
+            match->out_dst_port = rte_cpu_to_be_16(DOCA_VXLAN_DEFAULT_PORT); // VXLAN (change to enum/define)
             match->tun.type = DOCA_TUN_VXLAN;
             match->tun.vxlan.tun_id = 0xffffffff;
             break;
@@ -430,17 +430,20 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_inf
     match.in_dst_ip.a.ipv4_addr = doca_pinfo_inner_ipv4_dst(pinfo);
     match.in_src_ip.a.ipv4_addr = doca_pinfo_inner_ipv4_src(pinfo);
     match.in_l4_type = pinfo->inner.l4_type;
-    match.in_src_port = rte_be_to_cpu_16(doca_pinfo_inner_src_port(pinfo));
-    match.in_dst_port = rte_be_to_cpu_16(doca_pinfo_inner_dst_port(pinfo));
+    match.in_src_port = doca_pinfo_inner_src_port(pinfo);
+    match.in_dst_port = doca_pinfo_inner_dst_port(pinfo);
 
     actions.mod_dst_ip.a.ipv4_addr = (doca_pinfo_inner_ipv4_dst(pinfo) & rte_cpu_to_be_32(0x00ffffff))
                                     | rte_cpu_to_be_32(0x25000000); // change dst ip
     //DELELTE
     //for test all field
-    //actions.mod_src_ip.a.ipv4_addr = ((192<<24) + (168<<16) + (1<<8) + 1);
-    //actions.mod_dst_port = 1234; 
-    //actions.mod_src_port = 4321;
+    //actions.mod_src_ip.a.ipv4_addr = rte_cpu_to_be_32(((192<<24) + (168<<16) + (1<<8) + 1));
+    //actions.mod_dst_port = rte_cpu_to_be_16(0x1234); 
+    //actions.mod_src_port = rte_cpu_to_be_16(0x4321);
     //TODO: add context
+    monitor.flags |= DOCA_GW_METER;
+    monitor.m.cir = 100 * 1000 / 8;// 100k
+    monitor.m.cbs = monitor.m.cir / 8;
     return doca_gw_pipeline_add_entry(0, pipeline, &match, &actions, &monitor,
                                       sw_rss_fwd_tbl_port[pinfo->orig_port_id], &err);
 }

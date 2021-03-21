@@ -51,6 +51,18 @@ struct doca_dpdk_item_vxlan_data {
 	struct rte_flow_item_vxlan mask;
 };
 
+struct doca_dpdk_item_gre_data {
+	struct rte_flow_item_gre spec;
+	struct rte_flow_item_gre last;
+	struct rte_flow_item_gre mask;
+};
+
+struct doca_dpdk_item_gre_key_data {
+	uint32_t spec;
+	uint32_t last;
+	uint32_t mask;
+};
+
 struct doca_dpdk_item_udp_data {
 	uint8_t match_layer;
 	struct rte_flow_item_udp spec;
@@ -74,6 +86,8 @@ struct doca_gw_item_data {
 		struct doca_dpdk_item_vxlan_data vxlan;
 		struct doca_dpdk_item_tcp_data tcp;
 		struct doca_dpdk_item_udp_data udp;
+		struct doca_dpdk_item_gre_data gre;
+		struct doca_dpdk_item_gre_key_data gre_key;
 	};
 };
 
@@ -115,6 +129,11 @@ struct doca_dpdk_action_rawencap_data {
 	uint16_t idx;
 };
 
+struct doca_dpdk_action_meter_data {
+	uint32_t prof_id;
+	struct rte_flow_action_meter conf;
+};
+
 struct doca_dpdk_action_l4_port_data {
 	struct rte_flow_action_set_tp l4port;
 };
@@ -128,6 +147,7 @@ struct rte_flow_action_data {
 		struct doca_dpdk_action_rss_data rss;
 		struct doca_dpdk_action_rawdecap_data rawdecap;
 		struct doca_dpdk_action_rawencap_data rawencap;
+		struct doca_dpdk_action_meter_data meter;
 	};
 };
 
@@ -164,6 +184,7 @@ enum DOCA_DECAP_HDR {
 	FILL_IPV4_HDR = (1 << 1),
 	FILL_UDP_HDR = (1 << 2),
 	FILL_VXLAN_HDR = (1 << 3),
+	FILL_GRE_HDR = (1 << 4),
 };
 
 /*need move to util file ??*/
@@ -236,12 +257,16 @@ doca_match_is_ipv4(struct doca_gw_match *match, uint8_t type)
 	return (ip_addr.type == DOCA_IPV4);
 }
 
-static uint16_t
+static inline rte_be16_t
 doca_gw_get_l3_protol(struct doca_gw_match *match, uint8_t type)
 {
-	if (match->vlan_id)
-		return RTE_ETHER_TYPE_VLAN;
-	return doca_match_is_ipv4(match, type)? RTE_ETHER_TYPE_IPV4 : RTE_ETHER_TYPE_IPV6;
+	uint16_t protocol;
+	if (type == OUTER_MATCH && match->vlan_id)
+		protocol = RTE_ETHER_TYPE_VLAN;
+	else
+		protocol = doca_match_is_ipv4(match, type)?
+			RTE_ETHER_TYPE_IPV4 : RTE_ETHER_TYPE_IPV6;
+	return rte_cpu_to_be_16(protocol);
 }
 
 static inline bool doca_match_is_tcp(struct doca_gw_match *match)

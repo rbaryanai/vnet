@@ -2,6 +2,7 @@
 #include <rte_vxlan.h>
 #include <rte_ethdev.h>
 #include <rte_flow.h>
+#include <rte_gre.h>
 #include "doca_gw.h"
 #include "doca_gw_dpdk.h"
 #include "doca_log.h"
@@ -40,6 +41,22 @@ void doca_dump_rte_mbuff(const char *name, struct rte_mbuf *mb);
 void doca_dump_gw_match(struct doca_gw_match *match);
 void doca_dump_gw_actions(struct doca_gw_actions *actions);
 void doca_dump_pkt_start(char *ethdr);
+
+struct dump_hdr {
+	uint8_t protocal;
+	uint8_t (*dump_hdr)(uint8_t *, uint32_t *);
+};
+
+enum {
+	DUMP_ETH = 0,
+	DUMP_IPV4,
+	DUMP_UDP,
+	DUMP_TCP,
+	DUMP_VXLAN,
+	DUMP_GRE,
+
+	DUMP_END,
+};
 
 /*increase dump packet every layer line prefix space*/
 static inline void
@@ -151,12 +168,44 @@ doca_dump_vxlan_item(const struct rte_flow_item *item)
 	if (spec){
 		vni = (spec->vni[0] << 16U | spec->vni[1] << 8U | spec->vni[2]);
 		if (vni)
-			doca_log_buff("vni spec %u ", vni);
+			doca_log_buff("vni spec 0x%x ", vni);
 	} 
 	if (mask){
 		vni = (mask->vni[0] << 16U | mask->vni[1] << 8U | mask->vni[2]);
 		if (vni)
 			doca_log_buff("vni mask 0x%x ", vni);
+	}
+	doca_log_buff("/ ");
+}
+
+static void
+doca_dump_gre_item(const struct rte_flow_item *item)
+{
+	const struct rte_flow_item_gre *spec,*mask;
+
+	doca_log_buff("gre ");
+	spec = (const struct rte_flow_item_gre *)item->spec;
+	mask = (const struct rte_flow_item_gre *)item->mask;
+	if (spec && spec->protocol)
+		doca_log_buff("protocol spec 0x%x ", rte_be_to_cpu_16(spec->protocol));
+	if (mask && mask->protocol){
+		doca_log_buff("protocol mask 0x%x ", rte_be_to_cpu_16(mask->protocol));
+	}
+	doca_log_buff("/ ");
+}
+
+static void
+doca_dump_gre_item_key(const struct rte_flow_item *item)
+{
+	const uint32_t *spec,*mask;
+
+	doca_log_buff("gre_key  ");
+	spec = (const uint32_t *)item->spec;
+	mask = (const uint32_t *)item->mask;
+	if (spec)
+		doca_log_buff("value spec 0x%x ", rte_be_to_cpu_32(*spec));
+	if (mask){
+		doca_log_buff("value mask 0x%x ", rte_be_to_cpu_32(*mask));
 	}
 	doca_log_buff("/ ");
 }
@@ -197,7 +246,13 @@ doca_dump_rte_flow(const char *name, uint16_t port_id,
 				break;
 			case RTE_FLOW_ITEM_TYPE_VXLAN:
 				doca_dump_vxlan_item(items);
-				break;				
+				break;
+			case RTE_FLOW_ITEM_TYPE_GRE:
+				doca_dump_gre_item(items);
+				break;
+			case RTE_FLOW_ITEM_TYPE_GRE_KEY:
+				doca_dump_gre_item_key(items);				
+				break;
 			default:
 				doca_log_buff("not support item:%u\n", item_type);
 		}
@@ -266,7 +321,7 @@ doca_dump_rte_flow(const char *name, uint16_t port_id,
 			case RTE_FLOW_ACTION_TYPE_SET_MAC_SRC:
 				set_mac = (const struct rte_flow_action_set_mac*)actions->conf;
 				doca_log_mac("set_mac_src mac_addr ", set_mac->mac_addr);
-				doca_log_buff("/ ");				
+				doca_log_buff("/ ");
 			case RTE_FLOW_ACTION_TYPE_PORT_ID:
 				portid = (const struct rte_flow_action_port_id*)actions->conf;
 				doca_log_buff("port_id id %u / ", portid->id);
@@ -276,13 +331,16 @@ doca_dump_rte_flow(const char *name, uint16_t port_id,
 				break;
 			case RTE_FLOW_ACTION_TYPE_RAW_ENCAP:
 				doca_log_buff("raw_encap / ");
-				break;		
+				break;
 			case RTE_FLOW_ACTION_TYPE_DROP:
 				doca_log_buff("drop / ");
 				break;
 			case RTE_FLOW_ACTION_TYPE_METER:
 				meter = (const struct rte_flow_action_meter*)actions->conf;
 				doca_log_buff("meter mtr_id %u  / ", meter->mtr_id);
+				break;
+			case RTE_FLOW_ACTION_TYPE_COUNT:
+				doca_log_buff("count / ");
 				break;
 			default:
 				doca_log_buff("not support action:%u /", action_type);
@@ -292,95 +350,136 @@ doca_dump_rte_flow(const char *name, uint16_t port_id,
 	DOCA_LOG_INFO("%s\n",dump_buff);
 }
 
-static void
-doca_dump_mbuff_ipv4(struct rte_ipv4_hdr *ip_hdr)
+static uint8_t
+doca_dump_ethhdr(uint8_t *data, uint32_t *len)
 {
-	doca_inc_line_prefix();
+	uint16_t eth_type;
+	struct rte_ether_hdr *eth = (struct rte_ether_hdr *)data; 
+
+	doca_log_mac("eth src-mac:", eth->s_addr.addr_bytes);
+	doca_log_mac("dst-mac:", eth->d_addr.addr_bytes);
+	doca_log_buff(",type:0x%x\n", eth->ether_type);
+	eth_type = rte_be_to_cpu_16(eth->ether_type);
+	*len = sizeof(struct rte_ether_hdr);
+	switch (eth_type) {
+		case RTE_ETHER_TYPE_IPV4:
+			return DUMP_IPV4;
+		default:
+			printf("eth_type:0x%x not support.\n", eth_type);
+			return DUMP_END;
+	}
+}
+
+static uint8_t
+doca_dump_ipv4(uint8_t *data, uint32_t *len)
+{
+	struct rte_ipv4_hdr *ip_hdr = (struct rte_ipv4_hdr *)data; 
+
 	doca_log_ipv4("ip src:" ,rte_be_to_cpu_32(ip_hdr->src_addr));
 	doca_log_ipv4("dst:" ,rte_be_to_cpu_32(ip_hdr->dst_addr));
-	doca_log_buff("proto:%d\n", ip_hdr->next_proto_id);	
+	doca_log_buff("proto:%d\n", ip_hdr->next_proto_id);
+	*len = sizeof(struct rte_ipv4_hdr);
+	switch(ip_hdr->next_proto_id){
+		case IPPROTO_UDP:
+			return DUMP_UDP;
+		case IPPROTO_GRE:
+			return DUMP_GRE;
+		case IPPROTO_TCP:
+			return DUMP_TCP;
+		default:
+			printf("unsupport layer 4 type:0x%x\n", ip_hdr->next_proto_id);
+			return DUMP_END;
+	}
 }
 
-static void
-doca_dump_mbuff_ethhdr(struct rte_ether_hdr *eth_hdr)
+static uint8_t
+doca_dump_gre(uint8_t *data, uint32_t *len)
 {
-	doca_inc_line_prefix();
-	doca_log_mac("eth src-mac:", eth_hdr->s_addr.addr_bytes);
-	doca_log_mac("dst-mac:", eth_hdr->d_addr.addr_bytes);
-	doca_log_buff(",type:0x%x\n", eth_hdr->ether_type);
+	uint16_t proto;
+	uint32_t key;
+	struct rte_gre_hdr *gre_hdr = (struct rte_gre_hdr*)data;
+
+	proto = rte_be_to_cpu_16(gre_hdr->proto);
+	doca_log_buff("gre proto:0x%x", proto);
+	*len = sizeof(struct rte_gre_hdr);
+	if (gre_hdr->k) {
+		*len += sizeof(uint32_t);
+		key = *((uint32_t*)(gre_hdr + 1));
+		doca_log_buff(",key:0x%x", rte_be_to_cpu_32(key));
+	}
+	switch (proto){
+		case RTE_ETHER_TYPE_IPV4:
+			doca_log_buff("\n");
+			return DUMP_IPV4;
+		default:
+			printf("unsupport gre protocal:0x%x\n", proto);
+			return DUMP_END;
+	}
 }
 
-static void
-doca_dump_mbuff_vxlan(struct rte_vxlan_hdr *vxlan)
+static uint8_t
+doca_dump_vxlan(uint8_t *data, uint32_t *len)
 {
-	doca_inc_line_prefix();
-	doca_log_buff("vxlan flags:0x%x vni:%u\n", vxlan->vx_flags,vxlan->vx_vni);
-	doca_dump_pkt_start((char*)(vxlan + 1));
+	struct rte_vxlan_hdr *vxlan = (struct rte_vxlan_hdr *)data;
+
+	*len = sizeof(struct rte_vxlan_hdr);
+	doca_log_buff("vxlan flags:0x%x vni:0x%x\n", 
+		rte_be_to_cpu_32(vxlan->vx_flags) >> 24,
+		rte_be_to_cpu_32(vxlan->vx_vni) >> 8 );
+	return DUMP_ETH;
 }
 
-static void
-doca_dump_mbuff_udphdr(struct rte_udp_hdr *udp)
+static uint8_t
+doca_dump_udp(uint8_t *data, uint32_t *len)
 {
-	doca_inc_line_prefix();
+	struct rte_udp_hdr *udp = (struct rte_udp_hdr *)data;
+
+	*len = sizeof(struct rte_udp_hdr);
 	doca_log_buff("udp src-port:%d dst-port:%d", rte_be_to_cpu_16(udp->src_port),
 		rte_be_to_cpu_16(udp->dst_port));
 	if (rte_be_to_cpu_16(udp->dst_port) == DOCA_VXLAN_DEFAULT_PORT) {
-		doca_log_buff("(vxlan)\n");
-		doca_dump_mbuff_vxlan((struct rte_vxlan_hdr*)(udp + 1));
+		doca_log_buff("\n");
+		return DUMP_VXLAN;
 	}
-	doca_log_buff("\n");
+	return DUMP_END;
 }
 
-static void
-doca_dump_mbuff_tcphdr(struct rte_tcp_hdr *tcp)
+static uint8_t
+doca_dump_tcp(uint8_t *data, uint32_t *len)
 {
-	doca_inc_line_prefix();
+	struct rte_tcp_hdr *tcp = (struct rte_tcp_hdr *)data;
+
+	*len = sizeof(struct rte_tcp_hdr);
 	doca_log_buff("tcp src-port:%d dst-port:%d\n", rte_be_to_cpu_16(tcp->src_port),
-		rte_be_to_cpu_16(tcp->dst_port));	
+		rte_be_to_cpu_16(tcp->dst_port));
+	return DUMP_END;
 }
 
-static void
-doca_dump_mbuff_l4(uint16_t next_proto_id, char* data)
-{
-	struct rte_udp_hdr* udp = NULL;
-	struct rte_tcp_hdr* tcp = NULL;
+struct dump_hdr doca_dump_hdr[] = {
+	{DUMP_ETH,	 doca_dump_ethhdr},
+	{DUMP_IPV4,	 doca_dump_ipv4},
+	{DUMP_UDP,	 doca_dump_udp},
+	{DUMP_TCP,	 doca_dump_tcp},
+	{DUMP_VXLAN, doca_dump_vxlan},
+	{DUMP_GRE,	 doca_dump_gre},
+};
 
-	switch (next_proto_id) {
-		case IPPROTO_UDP:
-			udp = (struct rte_udp_hdr *)data;
-			doca_dump_mbuff_udphdr(udp);
-			break;
-		case IPPROTO_TCP:
-			tcp = (struct rte_tcp_hdr *)data;
-			doca_dump_mbuff_tcphdr(tcp);
-			break;
-		default:
-			DOCA_LOG_ERR("not support proto:%d\n", next_proto_id);
-			return;
-	}	
-}
-
-/*nest called by l4->vxlan*/
-void
-doca_dump_pkt_start(char *ethdr)
+void 
+doca_dump_packet_buff(uint8_t *head, uint32_t len)
 {
-	char *data = ethdr;
-	uint16_t l3_type, l4_type;
-	
-	doca_dump_mbuff_ethhdr((struct rte_ether_hdr *)data);
-	l3_type = rte_be_to_cpu_16(((struct rte_ether_hdr *)data)->ether_type);
-	data = data + sizeof(struct rte_ether_hdr);
-	switch (l3_type) {
-		case RTE_ETHER_TYPE_IPV4:
-			doca_dump_mbuff_ipv4((struct rte_ipv4_hdr *)data);
-			l4_type = ((struct rte_ipv4_hdr *)data)->next_proto_id;
-			data = data + sizeof(struct rte_ipv4_hdr);
-			doca_dump_mbuff_l4(l4_type, data);
+	uint32_t length;
+	uint16_t next_protocal;
+
+	next_protocal = DUMP_ETH;
+	while(len) {
+		next_protocal = doca_dump_hdr[next_protocal].dump_hdr(head, &length);
+		if (next_protocal == DUMP_END){
 			break;
-		default:
-			DOCA_LOG_ERR("not support l3_type:0x%x\n", l3_type);
-			return;
-	}	
+		}
+		len -= length;
+		head += length;
+		doca_inc_line_prefix();
+	}
 }
 
 void
@@ -396,7 +495,7 @@ doca_dump_rte_mbuff(const char *name, struct rte_mbuf *mb)
 	doca_log_buff("%s%p,pkt_len:%u,data_len:%u,nb_segs:%u,ol_flags:0x%lx\n", 
 		name, (void*)mb, mb->pkt_len, mb->data_len, mb->nb_segs, mb->ol_flags);
 	ethdr = (char *)((uintptr_t)rte_pktmbuf_read(mb, 0, sizeof(_eth_hdr), &_eth_hdr));	
-	doca_dump_pkt_start(ethdr);
+	doca_dump_packet_buff((uint8_t*)ethdr, mb->data_len);
 	printf("%s\n\n", dump_buff);
 }
 
@@ -412,15 +511,15 @@ void doca_dump_gw_actions(struct doca_gw_actions *actions)
 	if (!doca_is_mac_zero(actions->mod_src_mac))
 		doca_log_mac("\n    src-mac:",actions->mod_src_mac);
 	if (!doca_is_mac_zero(actions->mod_dst_mac))
-		doca_log_mac("\n    dst-mac:",actions->mod_dst_mac);
+		doca_log_mac("\n    dst-mac:", actions->mod_dst_mac);
 	if (!doca_is_ip_zero(&actions->mod_src_ip))
-		doca_log_ipv4("\n    src-ipv4:",actions->mod_src_ip.a.ipv4_addr);
+		doca_log_ipv4("\n    src-ipv4:", rte_be_to_cpu_32(actions->mod_src_ip.a.ipv4_addr));
 	if (!doca_is_ip_zero(&actions->mod_dst_ip))
-		doca_log_ipv4("\n    dst-ipv4:",actions->mod_dst_ip.a.ipv4_addr);
+		doca_log_ipv4("\n    dst-ipv4:", rte_be_to_cpu_32(actions->mod_dst_ip.a.ipv4_addr));
 	if (actions->mod_src_port)
-		doca_log_buff("\n    src-port:0x%x",actions->mod_src_port);
+		doca_log_buff("\n    src-port:0x%x", rte_be_to_cpu_16(actions->mod_src_port));
 	if (actions->mod_dst_port)
-		doca_log_buff("\n    dst-port:0x%x",actions->mod_dst_port);
+		doca_log_buff("\n    dst-port:0x%x", rte_be_to_cpu_16(actions->mod_dst_port));
 	DOCA_LOG_INFO("%s\n", dump_buff);
 }
 
@@ -439,33 +538,36 @@ void doca_dump_gw_match(struct doca_gw_match *match)
 	if (match->vlan_id)
 		doca_log_buff("\n  vlan-id:0x%x",match->vlan_id);
 	if (!doca_is_ip_zero(&match->out_src_ip))
-		doca_log_ipv4("\n    outer-src-ip:", match->out_src_ip.a.ipv4_addr);
+		doca_log_ipv4("\n    outer-src-ip:", rte_be_to_cpu_32(match->out_src_ip.a.ipv4_addr));
 	if (!doca_is_ip_zero(&match->out_dst_ip))
-		doca_log_ipv4("\n    outer-dst-ip:", match->out_dst_ip.a.ipv4_addr);
+		doca_log_ipv4("\n    outer-dst-ip:", rte_be_to_cpu_32(match->out_dst_ip.a.ipv4_addr));
 	if (match->out_l4_type)
 		doca_log_buff("\n    outer-l4-type:%u", match->out_l4_type);
 	if (match->out_src_port)
-		doca_log_buff("\n    outer-src-port:0x%x", match->out_src_port);
+		doca_log_buff("\n    outer-src-port:%u", rte_be_to_cpu_16(match->out_src_port));
 	if (match->out_dst_port)
-		doca_log_buff("\n    outer-dst-port:0x%x", match->out_dst_port);
+		doca_log_buff("\n    outer-dst-port:%u", rte_be_to_cpu_16(match->out_dst_port));
 	switch (match->tun.type) {
 		case DOCA_TUN_VXLAN:
-			doca_log_buff("\n    tun-type:vxlan,vni:0x%x", match->tun.vxlan.tun_id);
+			doca_log_buff("\n    tun-type:vxlan,vni:0x%x", rte_be_to_cpu_32(match->tun.vxlan.tun_id));
+			break;
+		case DOCA_TUN_GRE:
+			doca_log_buff("\n    tun-type:gre,key:0x%x", rte_be_to_cpu_32(match->tun.gre.key));
 			break;
 		case DOCA_TUN_NONE:
 			doca_log_buff("\n    tun-type:none");
 			break;
 	}
 	if (!doca_is_ip_zero(&match->in_src_ip))
-		doca_log_ipv4("\n    inner-src-ip:", match->in_src_ip.a.ipv4_addr);
+		doca_log_ipv4("\n    inner-src-ip:", rte_be_to_cpu_32(match->in_src_ip.a.ipv4_addr));
 	if (!doca_is_ip_zero(&match->in_dst_ip))
-		doca_log_ipv4("\n    inner-dst-ip:", match->in_dst_ip.a.ipv4_addr);
+		doca_log_ipv4("\n    inner-dst-ip:", rte_be_to_cpu_32(match->in_dst_ip.a.ipv4_addr));
 	if (match->in_l4_type)
 		doca_log_buff("\n    inner-l4-type:%u", match->in_l4_type);
 	if (match->in_src_port)
-		doca_log_buff("\n    inner-src-port:0x%x", match->in_src_port);
+		doca_log_buff("\n    inner-src-port:0x%x", rte_be_to_cpu_16(match->in_src_port));
 	if (match->in_dst_port)
-		doca_log_buff("\n    inner-dst-port:0x%x", match->in_dst_port);
+		doca_log_buff("\n    inner-dst-port:0x%x", rte_be_to_cpu_16(match->in_dst_port));
 	DOCA_LOG_INFO("%s\n", dump_buff);
 }
 

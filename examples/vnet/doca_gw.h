@@ -98,6 +98,12 @@ struct doca_gw_port_cfg {
     uint16_t priv_data_size;       /* user private data */
 };
 
+struct doca_gw_port
+{
+    uint32_t port_id;
+    uint8_t  user_data[0];
+};
+
 /**
  * @brief - matcher
  *   - used for defintion of a pipeline
@@ -164,7 +170,15 @@ struct doca_gw_actions {
     struct doca_gw_encap_action encap;
 };
 
+enum {
+	DOCA_GW_NONE = 0,
+	DOCA_GW_METER = (1 << 1),
+	DOCA_GW_COUNT = (1 << 2),
+	DOCA_GW_AGING = (1 << 3),
+};
+
 struct doca_gw_monitor {
+    uint8_t flags;
     bool count;
     struct meter {
         uint64_t cir;
