@@ -8,6 +8,7 @@
 #include <rte_net.h>
 #include "gw_port.h"
 #include "doca_log.h"
+#include "doca_gw.h"
 
 DOCA_LOG_MODULE(gw_port)
 
@@ -138,6 +139,8 @@ int gw_init_port(int port_id,int nr_queues)
 void gw_close_port(int port_id)
 {
     struct rte_flow_error error;
+
+	doca_gw_destroy(port_id);
     rte_flow_flush(port_id, &error);
     rte_eth_dev_stop(port_id);
     rte_eth_dev_close(port_id);

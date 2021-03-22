@@ -1092,6 +1092,10 @@ doca_gw_dpdk_pipe_create_flow(struct doca_gw_pipelne_entry *entry, struct doca_g
 	return doca_gw_dpdk_create_flow(pipe->port_id, &pipe->attr, pipe->items, pipe->actions);
 }
 
+int doca_gw_dpdk_pipe_free_entry(uint16_t portid, struct doca_gw_pipelne_entry *entry)
+{
+	return doca_gw_dpdk_free_flow(portid, (struct rte_flow *)entry->pipe_entry);
+}
 /*todo , how to manager root/queue flows for one port.*/
 int
 doca_gw_dpdk_init_port(uint16_t port_id)

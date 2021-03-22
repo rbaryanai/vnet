@@ -92,6 +92,7 @@ enum doca_gw_port_type {
 };
 
 struct doca_gw_port_cfg {
+	uint16_t port_id;
     enum doca_gw_port_type type;   /* mapping type of port */
     uint16_t queues;                
     const char *devargs;           /* specific per port type cfg */
@@ -371,4 +372,5 @@ int doca_gw_query(struct doca_gw_pipelne_entry *pe, struct doca_gw_query *q);
  */
 bool doca_gw_query_aging(struct doca_gw_pipelne_entry *arr, int arr_len, int *n);
 
+void doca_gw_destroy(uint16_t port_id);
 #endif
