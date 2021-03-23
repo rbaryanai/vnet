@@ -160,7 +160,8 @@ struct doca_dpdk_action_entry {
 struct doca_gw_pipe_dpdk_flow {
 	uint16_t port_id;
 	uint8_t nb_items;
-	uint8_t nb_actions;
+	uint8_t nb_actions_pipe;
+	uint8_t nb_actions_entry;
 	struct rte_flow_attr attr;
 	struct rte_flow_item items[MAX_ITEMS];
 	struct doca_dpdk_item_entry item_entry[MAX_ITEMS];

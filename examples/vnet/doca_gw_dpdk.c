@@ -747,13 +747,13 @@ static int doca_gw_dpdk_build_action(struct doca_gw_pipeline_cfg *cfg,
 		doca_gw_dpdk_build_l4_port_action(NEXT_ACTION, cfg, DOCA_DST);
 	if (actions->dec_ttl)
 		doca_gw_dpdk_build_dec_ttl_action(NEXT_ACTION);
-	pipe_flow->nb_actions = idx;
+	pipe_flow->nb_actions_pipe = idx;
 	return ret;
 }
 
 static void doca_gw_dpdk_build_end_action(struct doca_gw_pipe_dpdk_flow *pipe)
 {
-	struct rte_flow_action *action = &pipe->actions[pipe->nb_actions++];
+	struct rte_flow_action *action = &pipe->actions[pipe->nb_actions_entry++];
 	action->type = RTE_FLOW_ACTION_TYPE_END;
 }
 
@@ -794,7 +794,7 @@ static int doca_gw_dpdk_build_fwd(struct doca_gw_pipe_dpdk_flow *pipe,
 {
 	struct doca_dpdk_action_entry *action_entry;
 
-	action_entry = &pipe->action_entry[pipe->nb_actions++];
+	action_entry = &pipe->action_entry[pipe->nb_actions_entry++];
 	switch(fwd_cfg->type) {
 		case DOCA_FWD_RSS:
 			doca_gw_dpdk_build_rss_action(action_entry, fwd_cfg);
@@ -933,7 +933,7 @@ doca_gw_dpdk_build_monitor_action(struct doca_gw_pipelne_entry *pipe_entry,
 	struct doca_dpdk_action_entry *entry;
 
 	if (mon->flags & DOCA_GW_METER) {
-		entry = &pipe->action_entry[pipe->nb_actions++];
+		entry = &pipe->action_entry[pipe->nb_actions_entry++];
 		if (doca_gw_dpdk_build_meter_action(pipe_entry, port_id, entry, mon))
 			return -1;
 	}
@@ -966,7 +966,7 @@ doca_gw_dpdk_modify_pipe_actions(struct doca_gw_pipe_dpdk_flow *pipe,
 	int idex, ret;
 	struct doca_dpdk_action_entry *action_entry;
 	
-	for (idex = 0 ; idex < pipe->nb_actions; idex++) {
+	for (idex = 0 ; idex < pipe->nb_actions_entry; idex++) {
 		action_entry = &pipe->action_entry[idex];
 		if (action_entry->modify_action == NULL)
 			continue;
@@ -1065,6 +1065,7 @@ doca_gw_dpdk_pipe_create_flow(struct doca_gw_pipelne_entry *entry, struct doca_g
 	DOCA_LOG_INFO("pip create flow:\n");
 	doca_dump_gw_match(match);
 	doca_dump_gw_actions(actions);
+	pipe->nb_actions_entry = pipe->nb_actions_pipe;
 	if(match == NULL && actions == NULL && cfg == NULL)
 		return NULL;
 	if (doca_gw_dpdk_modify_pipe_match(pipe, match)) {
