@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "doca_gw_dpdk.h"
 #include "doca_dpdk_priv.h"
+#include "doca_debug_dpdk.h"
 #include "doca_log.h"
 #include "doca_id_pool.h"
 #include <rte_vxlan.h>
