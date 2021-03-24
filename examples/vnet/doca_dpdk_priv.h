@@ -15,6 +15,9 @@ struct doca_gw_pipeline {
     void * handler;
 	uint32_t id;
 	uint32_t pipe_entry_id;
+	//need it ? but it expose to app ?
+	//or, we need manager those part memory...
+	//struct doca_gw_pipe_dpdk_flow flow; 
 	LIST_HEAD(, doca_gw_pipelne_entry) entry_list;
 };
 
