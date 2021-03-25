@@ -30,6 +30,7 @@
 #include "doca_gw.h"
 #include "doca_pcap.h"
 #include "doca_log.h"
+#include "doca_debug_dpdk.h"
 #include "gw.h"
 #include "doca_ft.h"
 #include "gw_port.h"

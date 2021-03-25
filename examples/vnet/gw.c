@@ -257,10 +257,11 @@ static struct doca_gw_pipeline *gw_build_ul_ol(struct doca_gw_port *port)
     // added
     struct doca_gw_pipeline_cfg pipe_cfg = {0};
     struct doca_gw_error err = {0};
-    struct doca_gw_match match = {0};
+    struct doca_gw_match match;
     struct doca_gw_actions actions = {0};
     struct doca_gw_monitor monitor = { .m.cbs = UINT64_MAX,.m.cir = UINT64_MAX};
 
+    memset(&match, 0x0, sizeof(match));
     gw_build_match_tun_and_5tuple(&match);
     gw_build_decap_inner_modify_actions(&actions);
     gw_fill_monior(&monitor);
@@ -294,10 +295,11 @@ static struct doca_gw_pipeline *gw_build_ol_to_ol(struct doca_gw_port *port)
     // added
     struct doca_gw_pipeline_cfg pipe_cfg = {0};
     struct doca_gw_error err = {0};
-    struct doca_gw_match match = {0};
+    struct doca_gw_match match;
     struct doca_gw_actions actions = {0};
     struct doca_gw_monitor monitor = {0};
 
+    memset(&match, 0x0, sizeof(match));
     gw_build_match_tun_and_5tuple(&match);
     gw_build_decap_inner_modify_actions(&actions);
     gw_build_encap_actions(&actions);
@@ -412,7 +414,7 @@ static void gw_pipeline_set_entry_tun(struct doca_gw_match *match,
 struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_info *pinfo,
                                                              struct doca_gw_pipeline *pipeline)
 {
-    struct doca_gw_match match = {0};
+    struct doca_gw_match match;
     struct doca_gw_actions actions = {0};
     struct doca_gw_monitor monitor = { .m.cbs = GW_DEFAULT_CBS, .m.cir = GW_DEFAULT_CIR};
     struct doca_gw_error err = {0};
@@ -422,6 +424,7 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_inf
         return NULL;
     }
 
+    memset(&match, 0x0, sizeof(match));
     /* exact match on dst ip and vni */
     match.out_dst_ip.a.ipv4_addr = doca_pinfo_outer_ipv4_dst(pinfo);
     gw_pipeline_set_entry_tun(&match,pinfo);
@@ -452,7 +455,7 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_inf
 struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ol_entry(struct doca_pkt_info *pinfo,
                                                              struct doca_gw_pipeline *pipeline)
 {
-    struct doca_gw_match match = {0};
+    struct doca_gw_match match;
     struct doca_gw_actions actions = {0};
     struct doca_gw_monitor monitor = {0};
     struct doca_gw_error err = {0};
@@ -462,6 +465,7 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ol_entry(struct doca_pkt_inf
         return NULL;
     }
 
+    memset(&match, 0x0, sizeof(match));
     /* exact match on dst ip and vni */
     match.out_dst_ip.a.ipv4_addr = doca_pinfo_outer_ipv4_dst(pinfo);
     gw_pipeline_set_entry_tun(&match, pinfo);

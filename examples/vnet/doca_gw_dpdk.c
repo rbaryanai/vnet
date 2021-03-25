@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include "doca_gw_dpdk.h"
 #include "doca_dpdk_priv.h"
+#include "doca_debug_dpdk.h"
 #include "doca_log.h"
 #include "doca_id_pool.h"
 #include <rte_vxlan.h>
@@ -24,14 +25,17 @@ struct doca_gw_engine {
 };
 
 struct doca_gw_engine doca_gw_engine;
+#define DOCA_GW_MAX_PORTS (128)
+static struct doca_gw_port *doca_gw_used_ports[DOCA_GW_MAX_PORTS];
 
 void doca_gw_init_dpdk(__rte_unused struct doca_gw_cfg *cfg)
 {
 	uint8_t pip_idx;
 	struct doca_gw_pipe_dpdk_flow *pipe_flow;
-        struct doca_id_pool_cfg pool_cfg = { .size = cfg->total_sessions, .min = 1 };
+	struct doca_id_pool_cfg pool_cfg = { .size = cfg->total_sessions, .min = 1 };
 
-        memset(&doca_gw_engine,0, sizeof(doca_gw_engine));
+	memset(doca_gw_used_ports,0,sizeof(doca_gw_used_ports));
+	memset(&doca_gw_engine,0, sizeof(doca_gw_engine));
 	LIST_INIT(&doca_gw_engine.pipe_flows.free_head);
 	for(pip_idx = 0 ; pip_idx < MAX_PIP_FLOWS; pip_idx++){
 		pipe_flow = &doca_gw_engine.pipe_flows.pipe_flows[pip_idx];
@@ -39,8 +43,8 @@ void doca_gw_init_dpdk(__rte_unused struct doca_gw_cfg *cfg)
 		LIST_INSERT_HEAD(&doca_gw_engine.pipe_flows.free_head, pipe_flow, free_list);
 	}
 
-        doca_gw_engine.meter_pool =    doca_id_pool_create(&pool_cfg);
-        doca_gw_engine.meter_profile_pool = doca_id_pool_create(&pool_cfg);
+	doca_gw_engine.meter_pool = doca_id_pool_create(&pool_cfg);
+	doca_gw_engine.meter_profile_pool = doca_id_pool_create(&pool_cfg);
 	//todo, need remove to init_port 
 	doca_gw_dpdk_init_port(0);
 	doca_gw_dpdk_init_port(1);
@@ -746,13 +750,13 @@ static int doca_gw_dpdk_build_action(struct doca_gw_pipeline_cfg *cfg,
 		doca_gw_dpdk_build_l4_port_action(NEXT_ACTION, cfg, DOCA_DST);
 	if (actions->dec_ttl)
 		doca_gw_dpdk_build_dec_ttl_action(NEXT_ACTION);
-	pipe_flow->nb_actions = idx;
+	pipe_flow->nb_actions_pipe = idx;
 	return ret;
 }
 
 static void doca_gw_dpdk_build_end_action(struct doca_gw_pipe_dpdk_flow *pipe)
 {
-	struct rte_flow_action *action = &pipe->actions[pipe->nb_actions++];
+	struct rte_flow_action *action = &pipe->actions[pipe->nb_actions_entry++];
 	action->type = RTE_FLOW_ACTION_TYPE_END;
 }
 
@@ -793,7 +797,7 @@ static int doca_gw_dpdk_build_fwd(struct doca_gw_pipe_dpdk_flow *pipe,
 {
 	struct doca_dpdk_action_entry *action_entry;
 
-	action_entry = &pipe->action_entry[pipe->nb_actions++];
+	action_entry = &pipe->action_entry[pipe->nb_actions_entry++];
 	switch(fwd_cfg->type) {
 		case DOCA_FWD_RSS:
 			doca_gw_dpdk_build_rss_action(action_entry, fwd_cfg);
@@ -932,7 +936,7 @@ doca_gw_dpdk_build_monitor_action(struct doca_gw_pipelne_entry *pipe_entry,
 	struct doca_dpdk_action_entry *entry;
 
 	if (mon->flags & DOCA_GW_METER) {
-		entry = &pipe->action_entry[pipe->nb_actions++];
+		entry = &pipe->action_entry[pipe->nb_actions_entry++];
 		if (doca_gw_dpdk_build_meter_action(pipe_entry, port_id, entry, mon))
 			return -1;
 	}
@@ -965,7 +969,7 @@ doca_gw_dpdk_modify_pipe_actions(struct doca_gw_pipe_dpdk_flow *pipe,
 	int idex, ret;
 	struct doca_dpdk_action_entry *action_entry;
 	
-	for (idex = 0 ; idex < pipe->nb_actions; idex++) {
+	for (idex = 0 ; idex < pipe->nb_actions_entry; idex++) {
 		action_entry = &pipe->action_entry[idex];
 		if (action_entry->modify_action == NULL)
 			continue;
@@ -1055,8 +1059,8 @@ doca_gw_dpdk_create_def_queue(uint16_t port_id)
 	return doca_gw_dpdk_create_flow(port_id, &attr, items, actions);
 }
 
-struct rte_flow *
-doca_gw_dpdk_pipe_create_flow(struct doca_gw_pipelne_entry *entry, struct doca_gw_pipe_dpdk_flow *pipe,
+static struct rte_flow *
+doca_gw_dpdk_pipe_create_entry_flow(struct doca_gw_pipelne_entry *entry, struct doca_gw_pipe_dpdk_flow *pipe,
 					struct doca_gw_match *match, struct doca_gw_actions *actions,
 					struct doca_gw_monitor *mon, struct doca_fwd_table_cfg *cfg,
 					__rte_unused struct doca_gw_error *err)
@@ -1064,6 +1068,7 @@ doca_gw_dpdk_pipe_create_flow(struct doca_gw_pipelne_entry *entry, struct doca_g
 	DOCA_LOG_INFO("pip create flow:\n");
 	doca_dump_gw_match(match);
 	doca_dump_gw_actions(actions);
+	pipe->nb_actions_entry = pipe->nb_actions_pipe;
 	if(match == NULL && actions == NULL && cfg == NULL)
 		return NULL;
 	if (doca_gw_dpdk_modify_pipe_match(pipe, match)) {
@@ -1090,6 +1095,39 @@ doca_gw_dpdk_pipe_create_flow(struct doca_gw_pipelne_entry *entry, struct doca_g
 	return doca_gw_dpdk_create_flow(pipe->port_id, &pipe->attr, pipe->items, pipe->actions);
 }
 
+struct doca_gw_pipelne_entry*
+doca_gw_dpdk_pipe_create_flow(struct doca_gw_pipeline *pipeline,
+					struct doca_gw_match *match, struct doca_gw_actions *actions,
+					struct doca_gw_monitor *mon, struct doca_fwd_table_cfg *cfg,
+					struct doca_gw_error *err)
+{
+
+    struct doca_gw_pipelne_entry *entry;
+
+	entry = (struct doca_gw_pipelne_entry *)malloc(sizeof(struct doca_gw_pipelne_entry));
+	if (entry == NULL)
+		return NULL;
+    entry->pipe_entry = doca_gw_dpdk_pipe_create_entry_flow(entry, pipeline->handler,
+		match, actions, mon, cfg, err);
+    if (entry->pipe_entry == NULL) {
+            DOCA_LOG_INFO("create pip entry fail.\n");
+            goto free_pipe_entry;
+    }
+    entry->id = pipeline->pipe_entry_id++;
+	LIST_INSERT_HEAD(&pipeline->entry_list, entry, next);
+    DOCA_LOG_INFO("offload[%d]: pipeline=%p, match =%pi mod %p",
+		entry->id, pipeline, match, actions);
+	return entry;
+free_pipe_entry:
+	free(entry);
+	return NULL;
+}
+
+
+int doca_gw_dpdk_pipe_free_entry(uint16_t portid, struct doca_gw_pipelne_entry *entry)
+{
+	return doca_gw_dpdk_free_flow(portid, (struct rte_flow *)entry->pipe_entry);
+}
 /*todo , how to manager root/queue flows for one port.*/
 int
 doca_gw_dpdk_init_port(uint16_t port_id)
@@ -1112,15 +1150,12 @@ doca_gw_dpdk_init_port(uint16_t port_id)
  *
  * @return 
  */
-struct doca_gw_pipe_dpdk_flow*
-doca_gw_dpdk_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_gw_error *err)
+static struct doca_gw_pipe_dpdk_flow*
+doca_gw_dpdk_create_pipe_flow(struct doca_gw_pipeline_cfg *cfg, struct doca_gw_error *err)
 {
 	int ret;
 	struct doca_gw_pipe_dpdk_flow *pipe_flow;
 
-	DOCA_LOG_INFO("doca create pipe:%s\n", cfg->name);
-	doca_dump_gw_match(cfg->match);
-	doca_dump_gw_actions(cfg->actions);
 	pipe_flow = doca_gw_dpdk_get_free_pipe();
 	if (pipe_flow == NULL) {
 		err->type = DOCA_ERROR_NOMORE_PIPE_RESOURCE;
@@ -1147,4 +1182,100 @@ free_pipe:
 	return NULL;
 }
 
+struct doca_gw_pipeline *doca_gw_dpdk_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_gw_error *err)
+{
+    static uint32_t pipe_id = 1;
+    struct doca_gw_pipeline *pl;
+
+	DOCA_LOG_INFO("port:%u create pipe:%s\n", cfg->port->port_id, cfg->name);
+	doca_dump_gw_match(cfg->match);
+	doca_dump_gw_actions(cfg->actions);
+
+	pl = malloc(sizeof(struct doca_gw_pipeline));
+    if (pl == NULL)
+		return NULL;
+    memset(pl,0,sizeof(struct doca_gw_pipeline));
+	LIST_INIT(&pl->entry_list);
+	pl->id = pipe_id++;
+    pl->handler = doca_gw_dpdk_create_pipe_flow(cfg, err);
+	LIST_INSERT_HEAD(&cfg->port->pipe_list, pl, next);
+    return pl;
+}
+
+
+static struct doca_gw_port *doca_get_port_byid(uint8_t port_id)
+{
+	return doca_gw_used_ports[port_id];
+}
+
+static struct doca_gw_port *doca_alloc_port_byid(uint8_t port_id, struct doca_gw_port_cfg *cfg)
+{
+	struct doca_gw_port *port;
+
+	port = (struct doca_gw_port *) malloc(sizeof(struct doca_gw_port) + cfg->priv_data_size);
+	if (port == NULL)
+		return NULL;
+	memset(port, 0x0, sizeof(struct doca_gw_port));
+	port->port_id = port_id;
+	LIST_INIT(&port->pipe_list);
+	return port;
+}
+
+static bool doca_gw_save_port(struct doca_gw_port *port)
+{
+    int i = 0;
+    for ( i = 0 ; i < DOCA_GW_MAX_PORTS ; i++) {
+        if (doca_gw_used_ports[i] == NULL) {
+            doca_gw_used_ports[i] = port;
+            port->idx = i;
+            return true;
+        }
+    }
+    return false;
+}
+
+struct doca_gw_port * doca_gw_dpdk_port_start(struct doca_gw_port_cfg *cfg, struct doca_gw_error *err)
+{
+	struct doca_gw_port *port = doca_alloc_port_byid(cfg->port_id, cfg);
+
+    if ( port == NULL )
+        return NULL;
+    memset(port, 0, sizeof(struct doca_gw_port));
+    if (!doca_gw_save_port(port)) 
+        goto fail_port_start;
+    return port;
+fail_port_start:
+    free(port);
+    return NULL;
+}
+
+
+static void doca_gw_free_pipe(uint16_t portid, struct doca_gw_pipeline *pipe)
+{
+	struct doca_gw_pipelne_entry *entry;
+
+	DOCA_LOG_INFO("portid:%u free pipeid:%u\n", portid,pipe->id);
+	while((entry = LIST_FIRST(&pipe->entry_list))) {
+		LIST_REMOVE(entry, next);
+		DOCA_LOG_INFO("free pipe entry:%d\n", entry->id);
+		doca_gw_dpdk_pipe_free_entry(portid, entry);
+		free(entry);		
+	}
+	free(pipe);
+}
+
+void doca_gw_dpdk_destroy(uint16_t port_id)
+{
+	struct doca_gw_port *port;
+	struct doca_gw_pipeline *pipe;
+
+	DOCA_LOG_INFO("destroy port_id:%u\n", port_id);
+	port = doca_get_port_byid(port_id);
+	while((pipe = LIST_FIRST(&port->pipe_list))) {
+		LIST_REMOVE(pipe, next);
+		doca_gw_free_pipe(port_id, pipe);
+	}
+	doca_gw_used_ports[port_id] = NULL;
+	free(port);
+}
 
