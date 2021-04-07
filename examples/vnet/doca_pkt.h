@@ -74,4 +74,6 @@ void doca_pinfo_decap(struct doca_pkt_info *pinfo);
 
 int doca_pinfo_frag_pkt(struct doca_pkt_info * porigin, struct doca_pkt_info *tail, int mtu);
 
+int doca_pinfo_gtp_encap(struct doca_pkt_info * porigin);
+
 #endif

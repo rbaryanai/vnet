@@ -9,6 +9,7 @@
 
 #include "doca_pkt.h"
 #include "doca_log.h"
+#include "doca_utils.h"
 
 #define GW_VARIFY_LEN(pkt_len, off) if (off > pkt_len) { \
                                             return -1; \
@@ -374,3 +375,49 @@ int doca_pinfo_frag_pkt(struct doca_pkt_info * porigin, struct doca_pkt_info *ta
 
     return 2;
 }
+
+
+
+int doca_pinfo_gtp_encap(struct doca_pkt_info * porigin)
+{
+    struct rte_ipv4_hdr *hdr = (struct rte_ipv4_hdr *) porigin->outer.l3;
+    struct rte_udp_hdr *udphdr;
+    struct rte_gtp_hdr *gtphdr;
+    int l2_len = porigin->outer.l3 - porigin->outer.l2;
+    struct rte_ipv4_hdr *gtp_ip;
+    uint8_t packet[2000];
+    uint8_t gtp_hdr[128];
+    int     off = 0;
+    int j;
+
+    gtp_ip = (struct rte_ipv4_hdr *) &gtp_hdr[0];
+    *gtp_ip = *hdr;
+    gtp_ip->next_proto_id = IPPROTO_UDP;
+    gtp_ip->src_addr = doca_inline_parse_ipv4("12.0.0.29");
+    gtp_ip->dst_addr = doca_inline_parse_ipv4("187.0.0.29");
+    off+=sizeof(struct rte_ipv4_hdr);
+
+    udphdr = (struct rte_udp_hdr *) &gtp_hdr[off];
+    udphdr->src_port = rte_cpu_to_be_16(2152);
+    udphdr->dst_port = rte_cpu_to_be_16(2152);
+    udphdr->dgram_cksum= 0;
+
+    off+=sizeof(struct rte_udp_hdr);
+    gtphdr = (struct rte_gtp_hdr *) &gtp_hdr[off];
+    gtphdr->gtp_hdr_info = 0x30;
+    gtphdr->msg_type = 0xff;
+    gtphdr->plen = rte_cpu_to_be_16(porigin->len -l2_len) ;
+    off+=sizeof(struct rte_gtp_hdr);
+    udphdr->dgram_len = rte_cpu_to_be_16(porigin->len -l2_len + sizeof(struct rte_gtp_hdr) + sizeof(struct rte_udp_hdr));
+    gtp_ip->total_length = rte_cpu_to_be_16(porigin->len - l2_len + off);
+    memcpy(&packet[off] , porigin->outer.l3, porigin->len - l2_len); 
+    memcpy(&packet[0] , &gtp_hdr[0], off); 
+    memcpy(porigin->outer.l3 , packet, porigin->len - l2_len + off); 
+    porigin->len+=off;
+    hdr->hdr_checksum = 0;
+    hdr->hdr_checksum = rte_ipv4_cksum(hdr);
+
+    return 0;
+}
+
+

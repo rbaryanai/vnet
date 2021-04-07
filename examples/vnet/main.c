@@ -121,13 +121,22 @@ gw_process_pkts(void *p)
                                     vnf_adjust_mbuf(mbufs[j], &pinfo);
                                 }
 
+                                if (mbufs[j]->port == 1 && pinfo.outer.l3_type == 4 && pinfo.outer.l4_type == IPPROTO_TCP) {
+                                    /* encap */
+                                    if(mbufs[j]->port == 1 ) {
+                                        doca_pinfo_gtp_encap(&pinfo);
+                                        mbufs[j]->data_len = pinfo.len;
+                                        mbufs[j]->pkt_len = pinfo.len;
+                                    }
 
-                                n = doca_pinfo_frag_pkt(&pinfo,&pinfo1, 1400);
-                                if ( n == 2) {
-                                    mbuf_frag->data_len = pinfo1.len;
-                                    mbufs[j]->data_len = pinfo.len;
+                                    n = doca_pinfo_frag_pkt(&pinfo,&pinfo1, 1400);
+                                    if ( n == 2) {
+                                        mbuf_frag->data_len = pinfo1.len;
+                                        mbufs[j]->data_len = pinfo.len;
+                                    }
+
                                 }
-
+                                
                            }
                            last_port = mbufs[j]->port;
                            rte_eth_tx_burst((mbufs[j]->port == 0) ? 1 : 0, params->queues[port_id], &mbufs[j], 1);
