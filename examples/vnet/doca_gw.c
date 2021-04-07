@@ -120,6 +120,11 @@ void doca_gw_destroy(uint16_t port_id)
 	doca_gw_dpdk_destroy(port_id);
 }
 
+void doca_gw_dump_pipeline(uint16_t port_id)
+{
+	doca_gw_dpdk_dump_pipeline(port_id);
+}
+
 struct doca_fwd_tbl *doca_gw_create_fwd_tbl(struct doca_fwd_table_cfg *cfg)
 {
     static uint32_t fwd_id = 0;

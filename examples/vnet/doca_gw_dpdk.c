@@ -1064,14 +1064,17 @@ doca_gw_dpdk_pipe_create_flow(struct doca_gw_pipeline *pipeline,
 	entry = (struct doca_gw_pipelne_entry *)malloc(sizeof(struct doca_gw_pipelne_entry));
 	if (entry == NULL)
 		return NULL;
-	entry->pipe_entry = doca_gw_dpdk_pipe_create_entry_flow(entry, &pipeline->flow,
-			match, actions, mon, cfg, err);
-	if (entry->pipe_entry == NULL) {
-		DOCA_LOG_INFO("create pip entry fail.\n");
-		goto free_pipe_entry;
-	}
-	entry->id = pipeline->pipe_entry_id++;
+    entry->pipe_entry = doca_gw_dpdk_pipe_create_entry_flow(entry, &pipeline->flow,
+		match, actions, mon, cfg, err);
+    if (entry->pipe_entry == NULL) {
+            DOCA_LOG_INFO("create pip entry fail.\n");
+            goto free_pipe_entry;
+    }
+    entry->id = pipeline->pipe_entry_id++;
+	rte_spinlock_lock(&pipeline->entry_lock);
+	pipeline->nb_pipe_entrys++;
 	LIST_INSERT_HEAD(&pipeline->entry_list, entry, next);
+	rte_spinlock_unlock(&pipeline->entry_lock);
 	DOCA_LOG_DBG("offload[%d]: pipeline=%p, match =%pi mod %p",
 	entry->id, pipeline, match, actions);
 	return entry;
@@ -1150,6 +1153,7 @@ doca_gw_dpdk_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_gw_error 
 	memset(pl,0,sizeof(struct doca_gw_pipeline));
 	strcpy(pl->name, cfg->name);
 	LIST_INIT(&pl->entry_list);
+	rte_spinlock_init(&pl->entry_lock);
 	pl->id = pipe_id++;
 	flow = &pl->flow;
 	for (idx = 0 ; idx < MAX_ITEMS; idx++)
@@ -1161,8 +1165,10 @@ doca_gw_dpdk_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_gw_error 
 		free(pl);
 		return NULL;
 	}
+	rte_spinlock_lock(&cfg->port->pipe_lock);
 	LIST_INSERT_HEAD(&cfg->port->pipe_list, pl, next);
-	return pl;
+	rte_spinlock_unlock(&cfg->port->pipe_lock);
+    return pl;
 }
 
 static struct doca_gw_port *doca_get_port_byid(uint8_t port_id)
@@ -1180,6 +1186,7 @@ static struct doca_gw_port *doca_alloc_port_byid(uint8_t port_id, struct doca_gw
 	memset(port, 0x0, sizeof(struct doca_gw_port));
 	port->port_id = port_id;
 	LIST_INIT(&port->pipe_list);
+	rte_spinlock_init(&port->pipe_lock);
 	return port;
 }
 
@@ -1201,12 +1208,12 @@ struct doca_gw_port * doca_gw_dpdk_port_start(struct doca_gw_port_cfg *cfg,
 {
 	struct doca_gw_port *port = doca_alloc_port_byid(cfg->port_id, cfg);
 
-	if (port == NULL)
-		return NULL;
-	memset(port, 0, sizeof(struct doca_gw_port));
-	if (!doca_gw_save_port(port)) 
-		goto fail_port_start;
-	return port;
+    if ( port == NULL )
+        return NULL;
+    memset(port, 0, sizeof(struct doca_gw_port));
+    if (!doca_gw_save_port(port)) 
+        goto fail_port_start;
+    return port;
 fail_port_start:
 	free(port);
 	return NULL;
@@ -1218,12 +1225,14 @@ static void doca_gw_free_pipe(uint16_t portid, struct doca_gw_pipeline *pipe)
 	struct doca_gw_pipelne_entry *entry;
 
 	DOCA_LOG_INFO("portid:%u free pipeid:%u", portid,pipe->id);
+	rte_spinlock_lock(&pipe->entry_lock);
 	while((entry = LIST_FIRST(&pipe->entry_list))) {
 		LIST_REMOVE(entry, next);
 		nb_pipe_entry++;
 		doca_gw_dpdk_pipe_free_entry(portid, entry);
 		free(entry);		
 	}
+	rte_spinlock_unlock(&pipe->entry_lock);
 	free(pipe);
 	DOCA_LOG_INFO("total free pipe entry:%d", nb_pipe_entry);
 }
@@ -1236,10 +1245,32 @@ void doca_gw_dpdk_destroy(uint16_t port_id)
 	port = doca_get_port_byid(port_id);
 	if (port)
 		return;
+	rte_spinlock_lock(&port->pipe_lock);
 	while((pipe = LIST_FIRST(&port->pipe_list))) {
 		LIST_REMOVE(pipe, next);
 		doca_gw_free_pipe(port_id, pipe);
 	}
+	rte_spinlock_unlock(&port->pipe_lock);
 	doca_gw_used_ports[port_id] = NULL;
 	free(port);
 }
+
+void doca_gw_dpdk_dump_pipeline(uint16_t port_id)
+{
+	struct doca_gw_port *port;
+	struct doca_gw_pipeline *curr;
+	static const char *nic_stats_border = "########################";
+
+	printf("\n  %s Pipe line info for port %-2d %s\n",
+	       nic_stats_border, port_id, nic_stats_border);
+	port = doca_get_port_byid(port_id);
+	rte_spinlock_lock(&port->pipe_lock);
+	curr = LIST_FIRST(&port->pipe_list);
+	while(curr) {
+		printf("  pipe line id:%u,name:%s,flow entry count:%u\n",
+			curr->id, curr->name, curr->nb_pipe_entrys);
+		curr = LIST_NEXT(curr, next);
+	}
+	rte_spinlock_unlock(&port->pipe_lock);
+}
+
