@@ -300,9 +300,7 @@ doca_gw_dpdk_pipe_create_flow(struct doca_gw_pipeline *pipeline,
 int doca_gw_dpdk_init_port(uint16_t port_id);
 int doca_gw_dpdk_pipe_free_entry(uint16_t portid, struct doca_gw_pipelne_entry *entry);
 
-struct doca_gw_port * doca_gw_dpdk_port_start(struct doca_gw_port_cfg *cfg, struct doca_gw_error *err);
+struct doca_gw_port *
+doca_gw_dpdk_port_start(struct doca_gw_port_cfg *cfg, struct doca_gw_error *err);
 void doca_gw_dpdk_destroy(uint16_t port_id);
-
-
-
 #endif

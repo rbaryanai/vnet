@@ -10,14 +10,14 @@ struct doca_gw_pipelne_entry {
     int meter_profile_id;
 };
 
+#define TMP_BUFF 128
 struct doca_gw_pipeline {
 	LIST_ENTRY(doca_gw_pipeline) next;
+	char name[TMP_BUFF];
     void * handler;
 	uint32_t id;
 	uint32_t pipe_entry_id;
-	//need it ? but it expose to app ?
-	//or, we need manager those part memory...
-	//struct doca_gw_pipe_dpdk_flow flow; 
+	struct doca_gw_pipe_dpdk_flow flow;
 	LIST_HEAD(, doca_gw_pipelne_entry) entry_list;
 };
 

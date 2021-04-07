@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-DOCA_LOG_MODULE(doca_gw)
+DOCA_LOG_MODULE(doca_gw);
 
 struct doca_fwd_tbl {
     const char * name;
@@ -69,9 +69,10 @@ int doca_gw_rm_entry(uint16_t pipe_queue, struct doca_gw_pipelne_entry *entry)
  */
 struct doca_gw_port * doca_gw_port_start(struct doca_gw_port_cfg *cfg, struct doca_gw_error *err)
 {
-	struct doca_gw_port *port;
-    if (cfg == NULL)
-        return NULL;
+	struct doca_gw_port *port = NULL;
+
+	if (cfg == NULL)
+		return NULL;
 	switch(cfg->type) {
 	case DOCA_GW_PORT_DPDK:
 		DOCA_LOG_INFO("port is dpdk, matching port id");
@@ -80,16 +81,15 @@ struct doca_gw_port * doca_gw_port_start(struct doca_gw_port_cfg *cfg, struct do
 	case DOCA_GW_PORT_DPDK_BY_ID:
 		//TODO: need to parse devargs
 		DOCA_LOG_INFO("new doca port type:dpdk port id:%s", cfg->devargs);
+		cfg->port_id = atoi(cfg->devargs);
 		port = doca_gw_dpdk_port_start(cfg, err);
-		if (port)
-			port->port_id = atoi(cfg->devargs);
-		return port;
+		break;
 	default:
 		DOCA_LOG_ERR("unsupported port type");
 		err->message = "unsupported port type";
 		return NULL;
 	}
-	return NULL;
+	return port;
 }
 
 /**
