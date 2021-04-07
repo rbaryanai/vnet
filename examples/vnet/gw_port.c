@@ -14,7 +14,12 @@ DOCA_LOG_MODULE(gw_port)
 
 #define CHECK_INTERVAL 1000  /* 100ms */
 #define MAX_REPEAT_TIMES 90  /* 9s (90 * 100ms) in total */
-
+#define NS_PER_SEC 1E9
+#ifdef CLOCK_MONOTONIC_RAW /* Defined in glibc bits/time.h */
+#define CLOCK_TYPE_ID CLOCK_MONOTONIC_RAW
+#else
+#define CLOCK_TYPE_ID CLOCK_MONOTONIC
+#endif
 
 struct rte_mempool *mbuf_pool = NULL;
 
@@ -144,4 +149,102 @@ void gw_close_port(int port_id)
     rte_flow_flush(port_id, &error);
     rte_eth_dev_stop(port_id);
     rte_eth_dev_close(port_id);
+}
+
+static void
+gw_port_stats_display(uint16_t port_id)
+{
+	uint32_t i;
+	static uint64_t prev_pkts_rx[RTE_MAX_ETHPORTS];
+	static uint64_t prev_pkts_tx[RTE_MAX_ETHPORTS];
+	static uint64_t prev_bytes_rx[RTE_MAX_ETHPORTS];
+	static uint64_t prev_bytes_tx[RTE_MAX_ETHPORTS];
+	static uint64_t prev_ns[RTE_MAX_ETHPORTS];
+	struct timespec cur_time;
+	uint64_t diff_pkts_rx, diff_pkts_tx, diff_bytes_rx, diff_bytes_tx,
+								diff_ns;
+	uint64_t mpps_rx, mpps_tx, mbps_rx, mbps_tx;
+	struct rte_eth_stats stats;
+	struct rte_eth_dev_info dev_info;
+	static const char *nic_stats_border = "########################";
+
+	rte_eth_stats_get(port_id, &stats);
+	rte_eth_dev_info_get(port_id, &dev_info);
+	printf("\n  %s NIC statistics for port %-2d %s\n",
+	       nic_stats_border, port_id, nic_stats_border);
+
+	printf("  RX-packets: %-10"PRIu64" RX-missed: %-10"PRIu64" RX-bytes:  "
+	       "%-"PRIu64"\n", stats.ipackets, stats.imissed, stats.ibytes);
+	printf("  RX-errors: %-"PRIu64"\n", stats.ierrors);
+	printf("  RX-nombuf:  %-10"PRIu64"\n", stats.rx_nombuf);
+	printf("  TX-packets: %-10"PRIu64" TX-errors: %-10"PRIu64" TX-bytes:  "
+	       "%-"PRIu64"\n", stats.opackets, stats.oerrors, stats.obytes);
+
+	printf("\n");
+	for (i = 0; i < dev_info.nb_rx_queues; i++) {
+		printf("  Stats reg %2d RX-packets: %-10"PRIu64
+		       "  RX-errors: %-10"PRIu64
+		       "  RX-bytes: %-10"PRIu64"\n",
+		       i, stats.q_ipackets[i], stats.q_errors[i], stats.q_ibytes[i]);
+	}
+
+	printf("\n");
+	for (i = 0; i < dev_info.nb_tx_queues; i++) {
+		printf("  Stats reg %2d TX-packets: %-10"PRIu64
+		       "  TX-bytes: %-10"PRIu64"\n",
+		       i, stats.q_opackets[i], stats.q_obytes[i]);
+	}
+
+	diff_ns = 0;
+	if (clock_gettime(CLOCK_TYPE_ID, &cur_time) == 0) {
+		uint64_t ns;
+
+		ns = cur_time.tv_sec * NS_PER_SEC;
+		ns += cur_time.tv_nsec;
+
+		if (prev_ns[port_id] != 0)
+			diff_ns = ns - prev_ns[port_id];
+		prev_ns[port_id] = ns;
+	}
+
+	diff_pkts_rx = (stats.ipackets > prev_pkts_rx[port_id]) ?
+		(stats.ipackets - prev_pkts_rx[port_id]) : 0;
+	diff_pkts_tx = (stats.opackets > prev_pkts_tx[port_id]) ?
+		(stats.opackets - prev_pkts_tx[port_id]) : 0;
+	prev_pkts_rx[port_id] = stats.ipackets;
+	prev_pkts_tx[port_id] = stats.opackets;
+	mpps_rx = diff_ns > 0 ?
+		(double)diff_pkts_rx / diff_ns * NS_PER_SEC : 0;
+	mpps_tx = diff_ns > 0 ?
+		(double)diff_pkts_tx / diff_ns * NS_PER_SEC : 0;
+
+	diff_bytes_rx = (stats.ibytes > prev_bytes_rx[port_id]) ?
+		(stats.ibytes - prev_bytes_rx[port_id]) : 0;
+	diff_bytes_tx = (stats.obytes > prev_bytes_tx[port_id]) ?
+		(stats.obytes - prev_bytes_tx[port_id]) : 0;
+	prev_bytes_rx[port_id] = stats.ibytes;
+	prev_bytes_tx[port_id] = stats.obytes;
+	mbps_rx = diff_ns > 0 ?
+		(double)diff_bytes_rx / diff_ns * NS_PER_SEC : 0;
+	mbps_tx = diff_ns > 0 ?
+		(double)diff_bytes_tx / diff_ns * NS_PER_SEC : 0;
+
+	printf("\n  Throughput (since last show)\n");
+	printf("  Rx-pps: %12"PRIu64"          Rx-bps: %12"PRIu64"\n  Tx-pps: %12"
+	       PRIu64"          Tx-bps: %12"PRIu64"\n", mpps_rx, mbps_rx * 8,
+	       mpps_tx, mbps_tx * 8);
+
+	printf("  %s############################%s\n",
+	       nic_stats_border, nic_stats_border);
+}
+
+void gw_dump_port_stats(uint16_t port_id)
+{
+	const char clr[] = { 27, '[', '2', 'J', '\0' };
+	const char topLeft[] = { 27, '[', '1', ';', '1', 'H','\0' };
+
+	printf("%s%s", clr, topLeft);
+	doca_gw_dump_pipeline(port_id);
+	gw_port_stats_display(port_id);
+	fflush(stdout);
 }
