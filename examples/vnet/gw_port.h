@@ -4,4 +4,7 @@
 int gw_init_port(int port_id,int nr_queues);
 
 void gw_close_port(int port_id);
+
+struct rte_mbuf *gw_alloc_mbuf(void);
+
 #endif

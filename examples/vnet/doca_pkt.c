@@ -315,4 +315,62 @@ void doca_pinfo_decap(struct doca_pkt_info *pinfo)
 
 }
 
+int doca_pinfo_frag_pkt(struct doca_pkt_info * porigin, struct doca_pkt_info *tail, int mtu)
+{
+    int l3_off = 0;
+    int l4_off = 0;
+    uint16_t frag_off1 = 0;
+    uint16_t frag_off2 = 0;
+    int payload1 = 0; /* bytes of payload in first packet */
+    int payload2 = 0; /* bytes of payload on second packet */
+    struct rte_ipv4_hdr *hdr2; 
 
+    /* not ipv4 or not second pinfo to split */
+    if(porigin->outer.l3_type != 4 || !tail || tail->outer.l2 == NULL) {
+        return 1;
+    }
+
+    /* no need to fragment */
+    if(porigin->len <= mtu) {
+        return 1;
+    }
+
+    struct rte_ipv4_hdr *hdr = (struct rte_ipv4_hdr *) porigin->outer.l3;
+    /* find offest to begining of ip header and for payload */
+    l3_off = porigin->outer.l3 - porigin->outer.l2; 
+    l4_off = porigin->outer.l4 - porigin->outer.l2; 
+    /* frag is in unit of 8, so must adjust */
+    payload1 = mtu - l4_off;
+    payload1/=8;
+    payload1*=8;
+
+    /* ip heade is exactly the same except frag part */
+    memcpy(tail->outer.l2, porigin->outer.l2, l4_off);
+    tail->outer.l3 = tail->outer.l2 + l3_off;
+    tail->outer.l4 = tail->outer.l2 + l4_off;
+    /* copy payload2 after ip hdr */
+    payload2 = porigin->len - l4_off - payload1;
+    memcpy(tail->outer.l4, porigin->outer.l4 + payload1, payload2);
+    tail->len = l4_off + payload2;
+
+    /* fix pkt length and frag off */
+    hdr2 = (struct rte_ipv4_hdr* )tail->outer.l3;
+    hdr2->total_length = rte_cpu_to_be_16(tail->len - l3_off);
+    frag_off2 = payload1/8; 
+    hdr2->fragment_offset = rte_cpu_to_be_16(frag_off2);
+
+    /* cut first packet, setting frag flags */
+    frag_off1 = 0x2000;
+    hdr->fragment_offset = rte_cpu_to_be_16(frag_off1);
+    porigin->len = l4_off + payload1;
+    hdr->total_length = rte_cpu_to_be_16(porigin->len - l3_off);
+
+    /* fix checksum */
+    hdr2->hdr_checksum = 0;
+    hdr2->hdr_checksum = rte_ipv4_cksum	(hdr2);
+    hdr->hdr_checksum = 0;
+    hdr->hdr_checksum = rte_ipv4_cksum(hdr);
+
+
+    return 2;
+}

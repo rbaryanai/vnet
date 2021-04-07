@@ -17,6 +17,12 @@ DOCA_LOG_MODULE(gw_port)
 
 struct rte_mempool *mbuf_pool = NULL;
 
+
+struct rte_mbuf *gw_alloc_mbuf(void)
+{
+    return rte_pktmbuf_alloc(mbuf_pool);
+}
+
 static void
 gw_assert_link_status(int port_id)
 {

@@ -72,4 +72,6 @@ uint16_t doca_pinfo_outer_dst_port(struct doca_pkt_info *pinfo);
 
 void doca_pinfo_decap(struct doca_pkt_info *pinfo);
 
+int doca_pinfo_frag_pkt(struct doca_pkt_info * porigin, struct doca_pkt_info *tail, int mtu);
+
 #endif

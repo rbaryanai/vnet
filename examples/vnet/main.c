@@ -34,6 +34,7 @@
 #include "doca_ft.h"
 #include "gw_port.h"
 #include "doca_vnf.h"
+#include "doca_frag_vnf.h"
 
 DOCA_LOG_MODULE(main)
 
@@ -88,9 +89,15 @@ gw_process_pkts(void *p)
 	uint16_t i;
 	uint16_t j;
         struct doca_pkt_info pinfo;
+        struct doca_pkt_info pinfo1;
         struct vnf_per_core_params *params = (struct vnf_per_core_params *)p;
         int port_id;
+        int n = 0;
+        int last_port = 0;
 
+        struct rte_mbuf *mbuf_frag = NULL;
+
+        memset(&pinfo1,0, sizeof(struct doca_pkt_info));
 	while (!force_quit) {
             for (port_id = 0; port_id < 2; port_id++) { 
                 for (i = 0; i < 1/*nr_queues*/; i++) {
@@ -98,7 +105,12 @@ gw_process_pkts(void *p)
                     if (nb_rx) {
                         for (j = 0; j < nb_rx; j++) {
                             memset(&pinfo,0, sizeof(struct doca_pkt_info));
-                            doca_dump_rte_mbuff("recv mbuff:", mbufs[j]);
+                            memset(&pinfo1,0, sizeof(struct doca_pkt_info));
+                            if(mbuf_frag == NULL) {
+                                mbuf_frag = gw_alloc_mbuf();
+                            }
+                            pinfo1.outer.l2 = VNF_PKT_L2(mbuf_frag);
+                            //doca_dump_rte_mbuff("recv mbuff:", mbufs[j]);
                             if(!doca_parse_packet(VNF_PKT_L2(mbufs[j]),VNF_PKT_LEN(mbufs[j]), &pinfo)){
                                 pinfo.orig_port_id = mbufs[j]->port;
                                 if (pinfo.outer.l3_type == 4) {
@@ -108,8 +120,23 @@ gw_process_pkts(void *p)
                                     }
                                     vnf_adjust_mbuf(mbufs[j], &pinfo);
                                 }
-                            }
-                            rte_eth_tx_burst((mbufs[j]->port == 0) ? 1 : 0, params->queues[port_id], &mbufs[j], 1);
+
+
+                                n = doca_pinfo_frag_pkt(&pinfo,&pinfo1, 1400);
+                                if ( n == 2) {
+                                    mbuf_frag->data_len = pinfo1.len;
+                                    mbufs[j]->data_len = pinfo.len;
+                                }
+
+                           }
+                           last_port = mbufs[j]->port;
+                           rte_eth_tx_burst((mbufs[j]->port == 0) ? 1 : 0, params->queues[port_id], &mbufs[j], 1);
+                           if ( n == 2) {
+                               rte_eth_tx_burst((last_port == 0) ? 1 : 0, params->queues[last_port], &mbuf_frag, 1);
+                               mbuf_frag = NULL;
+                               n = 0;
+                           }
+
                         }
                     }
                 }
@@ -201,7 +228,7 @@ main(int argc, char **argv)
 	gw_init_port(0, total_cores);
 	gw_init_port(1, total_cores);
 
-        vnf = gw_get_doca_vnf();
+        vnf = frag_get_doca_vnf(); //gw_get_doca_vnf();
         vnf->doca_vnf_init((void *)&total_cores);
 
         DOCA_LOG_INFO("VNF initiated!\n");

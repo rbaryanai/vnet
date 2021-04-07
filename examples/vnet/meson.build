@@ -12,5 +12,5 @@ sources = files('main.c', 'doca_gw.h', 'doca_gw.c'
     , 'doca_gauge.h' ,'doca_gauge.c'
     , 'doca_gw_dpdk.h', 'doca_gw_dpdk.c', 'doca_debug_dpdk.c'
     , 'doca_id_pool.h', 'doca_id_pool.c'
-    , 'doca_dpdk_priv.h'
+    , 'doca_dpdk_priv.h' , 'doca_frag_vnf.h' , 'doca_frag_vnf.c'
 )
