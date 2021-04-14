@@ -5,9 +5,9 @@ struct doca_gw_pipelne_entry {
 	LIST_ENTRY(doca_gw_pipelne_entry) next;
     int id;
     void *pipe_entry;
-    /* for deletion */
-    int meter_id;
-    int meter_profile_id;
+    uint32_t meter_id;
+	uint32_t meter_policy_id;
+    uint32_t meter_profile_id;
 };
 
 #define TMP_BUFF 128
