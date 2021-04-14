@@ -996,12 +996,12 @@ doca_gw_dpdk_create_root_jump(uint16_t port_id)
 
 /*default match, -> queue[0]*/
 static struct rte_flow*
-doca_gw_dpdk_create_def_queue(uint16_t port_id)
+doca_gw_dpdk_create_def_rss(uint16_t port_id)
 {
 	struct rte_flow_attr attr;
 	struct rte_flow_item items[MAX_ITEMS];
 	struct rte_flow_action actions[MAX_ACTIONS];
-	struct rte_flow_action_queue queue;
+	struct doca_dpdk_action_rss_data rss;
 
 	memset(&attr, 0x0, sizeof(struct rte_flow_attr));
 	memset(items, 0x0, sizeof(items));
@@ -1010,11 +1010,16 @@ doca_gw_dpdk_create_def_queue(uint16_t port_id)
 	attr.ingress = 1;
 	attr.priority = MAX_FLOW_FRIO;
 	items[0].type = RTE_FLOW_ITEM_TYPE_ETH;
-	items[0].type = RTE_FLOW_ITEM_TYPE_END;
-	queue.index = 0;
-	actions[0].type = RTE_FLOW_ACTION_TYPE_QUEUE;
-	actions[0].conf = &queue;
+	items[1].type = RTE_FLOW_ITEM_TYPE_END;
 
+	memset(&rss, 0x0, sizeof(rss));
+	rss.queue[0] = 0;
+	rss.conf.queue_num = 1;
+	rss.conf.func = RTE_ETH_HASH_FUNCTION_DEFAULT;
+	rss.conf.types = ETH_RSS_IP | ETH_RSS_UDP | ETH_RSS_TCP;
+	rss.conf.queue = rss.queue;
+	actions[0].type = RTE_FLOW_ACTION_TYPE_RSS;
+	actions[0].conf = &rss.conf;
 	return doca_gw_dpdk_create_flow(port_id, &attr, items, actions);
 }
 
@@ -1097,7 +1102,7 @@ doca_gw_dpdk_init_port(uint16_t port_id)
 	root = doca_gw_dpdk_create_root_jump(port_id);
 	if(root == NULL)
 		return -1;
-	queue = doca_gw_dpdk_create_def_queue(port_id);
+	queue = doca_gw_dpdk_create_def_rss(port_id);
 	if(queue == NULL)
 		return -1;
 	return 0;

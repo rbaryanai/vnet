@@ -51,6 +51,7 @@ struct doca_pkt_tun_format {
 struct doca_pkt_info {
     void *orig_data;         
     uint16_t orig_port_id;
+	uint32_t rss_hash;
     struct doca_pkt_format     outer;
     enum APP_TUN_TYPE          tun_type;
     struct doca_pkt_tun_format tun;

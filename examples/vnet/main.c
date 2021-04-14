@@ -82,14 +82,33 @@ static void vnf_adjust_mbuf(struct rte_mbuf *m, struct doca_pkt_info *pinfo)
     //rte_pktmbuf_adj(m,diff);
 }
 
+static void
+gw_process_offload(struct rte_mbuf *mbuf)
+{
+	struct doca_pkt_info pinfo;
+
+    memset(&pinfo,0, sizeof(struct doca_pkt_info));
+    if(!doca_parse_packet(VNF_PKT_L2(mbuf),VNF_PKT_LEN(mbuf), &pinfo)){
+		pinfo.orig_data = mbuf;
+        pinfo.orig_port_id = mbuf->port;
+		pinfo.rss_hash = mbuf->hash.rss;
+        if (pinfo.outer.l3_type == 4) {
+            vnf->doca_vnf_process_pkt(&pinfo);
+            if(ph) {
+                doca_pcap_write(ph,pinfo.outer.l2, pinfo.len, gw_get_time_usec(), 0); 
+            }
+            vnf_adjust_mbuf(mbuf, &pinfo);
+        }
+    }
+}
+
 static int
 gw_process_pkts(void *p)
 {
-	static uint64_t cur_tsc,last_tsc;
+	uint64_t cur_tsc, last_tsc;
 	struct rte_mbuf *mbufs[VNF_RX_BURST_SIZE];
-	uint16_t i,j, nb_rx;
-	uint32_t port_id, core_id = rte_lcore_id();
-	struct doca_pkt_info pinfo;
+	uint16_t j, nb_rx;
+	uint32_t port_id = 0, core_id = rte_lcore_id();
 	struct vnf_per_core_params *params = (struct vnf_per_core_params *)p;
 
 	last_tsc = rte_rdtsc();
@@ -101,31 +120,15 @@ gw_process_pkts(void *p)
 				last_tsc = cur_tsc;
 			}
 		}
-            for (port_id = 0; port_id < 2; port_id++) { 
-                for (i = 0; i < 1/*nr_queues*/; i++) {
-                    nb_rx = rte_eth_rx_burst(port_id, params->queues[port_id], mbufs, VNF_RX_BURST_SIZE);
-                    if (nb_rx) {
-                        for (j = 0; j < nb_rx; j++) {
-                            memset(&pinfo,0, sizeof(struct doca_pkt_info));
-                            doca_dump_rte_mbuff("recv mbuff:", mbufs[j]);
-                            if(!doca_parse_packet(VNF_PKT_L2(mbufs[j]),VNF_PKT_LEN(mbufs[j]), &pinfo)){
-                                pinfo.orig_port_id = mbufs[j]->port;
-                                if (pinfo.outer.l3_type == 4) {
-                                    vnf->doca_vnf_process_pkt(&pinfo);
-                                    if(ph) {
-                                        doca_pcap_write(ph,pinfo.outer.l2, pinfo.len, gw_get_time_usec(), 0); 
-                                    }
-                                    vnf_adjust_mbuf(mbufs[j], &pinfo);
-                                }
-                            }
-                            rte_eth_tx_burst((mbufs[j]->port == 0) ? 1 : 0, params->queues[port_id], &mbufs[j], 1);
-                        }
-                    }
-                }
-            }
+		for (port_id = 0; port_id < 2; port_id++) { 
+			nb_rx = rte_eth_rx_burst(port_id, params->queues[port_id], mbufs, VNF_RX_BURST_SIZE);
+			for (j = 0; j < nb_rx; j++) {
+				gw_process_offload(mbufs[j]);
+				rte_eth_tx_burst((mbufs[j]->port == 0) ? 1 : 0, params->queues[port_id], &mbufs[j], 1);
+			}
+		}
 	}
-
-        return 0;
+	return 0;
 }
 
 static void
