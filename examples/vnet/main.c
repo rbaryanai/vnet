@@ -36,7 +36,7 @@
 #include "gw_port.h"
 #include "doca_vnf.h"
 
-DOCA_LOG_MODULE(main)
+DOCA_LOG_MODULE(main);
 
 #define VNF_PKT_L2(M) rte_pktmbuf_mtod(M,uint8_t *)
 #define VNF_PKT_LEN(M) rte_pktmbuf_pkt_len(M)
@@ -61,6 +61,7 @@ struct vnf_per_core_params {
 };
 
 struct vnf_per_core_params core_params_arr[RTE_MAX_LCORE];
+static uint64_t stats_timer = 1;
 
 static inline uint64_t gw_get_time_usec(void)
 {
@@ -81,43 +82,53 @@ static void vnf_adjust_mbuf(struct rte_mbuf *m, struct doca_pkt_info *pinfo)
     //rte_pktmbuf_adj(m,diff);
 }
 
+static void
+gw_process_offload(struct rte_mbuf *mbuf)
+{
+	struct doca_pkt_info pinfo;
+
+    memset(&pinfo,0, sizeof(struct doca_pkt_info));
+    if(!doca_parse_packet(VNF_PKT_L2(mbuf),VNF_PKT_LEN(mbuf), &pinfo)){
+		pinfo.orig_data = mbuf;
+        pinfo.orig_port_id = mbuf->port;
+		pinfo.rss_hash = mbuf->hash.rss;
+        if (pinfo.outer.l3_type == 4) {
+            vnf->doca_vnf_process_pkt(&pinfo);
+            if(ph) {
+                doca_pcap_write(ph,pinfo.outer.l2, pinfo.len, gw_get_time_usec(), 0); 
+            }
+            vnf_adjust_mbuf(mbuf, &pinfo);
+        }
+    }
+}
+
 static int
 gw_process_pkts(void *p)
 {
+	uint64_t cur_tsc, last_tsc;
 	struct rte_mbuf *mbufs[VNF_RX_BURST_SIZE];
-	uint16_t nb_rx;
-	uint16_t i;
-	uint16_t j;
-        struct doca_pkt_info pinfo;
-        struct vnf_per_core_params *params = (struct vnf_per_core_params *)p;
-        int port_id;
+	uint16_t j, nb_rx;
+	uint32_t port_id = 0, core_id = rte_lcore_id();
+	struct vnf_per_core_params *params = (struct vnf_per_core_params *)p;
 
+	last_tsc = rte_rdtsc();
 	while (!force_quit) {
-            for (port_id = 0; port_id < 2; port_id++) { 
-                for (i = 0; i < 1/*nr_queues*/; i++) {
-                    nb_rx = rte_eth_rx_burst(port_id, params->queues[port_id], mbufs, VNF_RX_BURST_SIZE);
-                    if (nb_rx) {
-                        for (j = 0; j < nb_rx; j++) {
-                            memset(&pinfo,0, sizeof(struct doca_pkt_info));
-                            doca_dump_rte_mbuff("recv mbuff:", mbufs[j]);
-                            if(!doca_parse_packet(VNF_PKT_L2(mbufs[j]),VNF_PKT_LEN(mbufs[j]), &pinfo)){
-                                pinfo.orig_port_id = mbufs[j]->port;
-                                if (pinfo.outer.l3_type == 4) {
-                                    vnf->doca_vnf_process_pkt(&pinfo);
-                                    if(ph) {
-                                        doca_pcap_write(ph,pinfo.outer.l2, pinfo.len, gw_get_time_usec(), 0); 
-                                    }
-                                    vnf_adjust_mbuf(mbufs[j], &pinfo);
-                                }
-                            }
-                            rte_eth_tx_burst((mbufs[j]->port == 0) ? 1 : 0, params->queues[port_id], &mbufs[j], 1);
-                        }
-                    }
-                }
-            }
+		if (core_id == 0) {
+			cur_tsc = rte_rdtsc();
+			if (cur_tsc > last_tsc + stats_timer) {
+				gw_dump_port_stats(0);
+				last_tsc = cur_tsc;
+			}
+		}
+		for (port_id = 0; port_id < 2; port_id++) { 
+			nb_rx = rte_eth_rx_burst(port_id, params->queues[port_id], mbufs, VNF_RX_BURST_SIZE);
+			for (j = 0; j < nb_rx; j++) {
+				gw_process_offload(mbufs[j]);
+				rte_eth_tx_burst((mbufs[j]->port == 0) ? 1 : 0, params->queues[port_id], &mbufs[j], 1);
+			}
+		}
 	}
-
-        return 0;
+	return 0;
 }
 
 static void
@@ -144,6 +155,63 @@ count_lcores(void)
     return cores;
 }
 
+static void
+gw_info_usage(const char *prgname)
+{
+	printf("%s [EAL options] -- \n"
+		"  --log_level: set log level\n"
+		"  --stats_timer: set interval to dump stats information",
+		prgname);
+}
+
+static int
+gw_parse_uint32(const char *uint32_value)
+{
+	char *end = NULL;
+	uint32_t value;
+
+	value = strtoul(uint32_value, &end, 16);
+	if ((uint32_value[0] == '\0') || (end == NULL) || (*end != '\0'))
+		return 0;
+	return value;
+}
+
+static int
+gw_info_parse_args(int argc, char **argv)
+{
+	int opt;
+	int option_index;
+	char *prgname = argv[0];
+	uint32_t log_level = 0;
+	static struct option long_option[] = {
+		{"log_level", 1, NULL, 0},
+		{"stats_timer", 1, NULL, 1},
+		{NULL, 0, 0, 0}
+	};
+
+	if (argc == 1) {
+		gw_info_usage(prgname);
+		return -1;
+	}
+	while ((opt = getopt_long(argc, argv, "",
+			long_option, &option_index)) != EOF) {
+		switch (opt) {
+		case 0:
+			log_level = gw_parse_uint32(optarg);
+			printf("set debug_level:%u\n", log_level);
+			doca_set_log_level(log_level);
+			break;
+		case 1:
+			stats_timer = gw_parse_uint32(optarg);
+			printf("set stats_timer:%lu\n", stats_timer);
+			break;
+		default:
+			gw_info_usage(prgname);
+			return -1;
+		}
+	}
+	return 0;
+}
 static int
 init_dpdk(int argc, char **argv)
 {
@@ -158,7 +226,10 @@ init_dpdk(int argc, char **argv)
 		DOCA_LOG_CRIT("invalid EAL arguments\n");
                 return ret;
         }
+	argc -= ret;
+	argv += ret;
 
+	gw_info_parse_args(argc, argv);
         for ( i = 0 ; i < 32 ; i++) {
             if (rte_lcore_is_enabled(i)){
                 core_params_arr[total_cores].ports[0]= 0;
@@ -196,6 +267,7 @@ main(int argc, char **argv)
             return -1;
         }
 
+	stats_timer *= rte_get_timer_hz();
         total_cores = count_lcores();
         DOCA_LOG_INFO("init ports: lcores = %d\n",total_cores);
 

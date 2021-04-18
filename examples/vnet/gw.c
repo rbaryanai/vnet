@@ -20,7 +20,7 @@
 #include "rte_gre.h"
 #include "rte_vxlan.h"
 
-DOCA_LOG_MODULE(GW)
+DOCA_LOG_MODULE(GW);
 
 #define SLB_IP_BUFF_SIZE 255
 #define GW_MAX_PORT_ID  (2)
@@ -662,7 +662,7 @@ int gw_handle_new_flow(struct doca_pkt_info *pinfo, struct doca_ft_user_ctx **ct
     
     switch(cls) {
         case GW_CLS_OL_TO_UL:
-            DOCA_LOG_INFO("adding entry ol to ul");
+            DOCA_LOG_DBG("adding entry ol to ul on port:%u", pinfo->orig_port_id);
             if (!doca_ft_add_new(gw_ins->ft, pinfo, ctx)) {
                 DOCA_LOG_DBG("failed create new entry");
                 return -1;
@@ -676,7 +676,7 @@ int gw_handle_new_flow(struct doca_pkt_info *pinfo, struct doca_ft_user_ctx **ct
             entry->is_hw = true;
             break;
         case GW_CLS_OL_TO_OL:
-            DOCA_LOG_INFO("adding entry ol to ol");
+            DOCA_LOG_DBG("adding entry ol to ol");
             if (!doca_ft_add_new(gw_ins->ft, pinfo,ctx)) {
                 DOCA_LOG_DBG("failed create new entry");
                 return -1;
@@ -692,7 +692,7 @@ int gw_handle_new_flow(struct doca_pkt_info *pinfo, struct doca_ft_user_ctx **ct
             // add flow to pipeline
             break;
         case GW_BYPASS_L4:
-            DOCA_LOG_INFO("adding entry no pipeline");
+            DOCA_LOG_DBG("adding entry no pipeline");
             if (!doca_ft_add_new(gw_ins->ft, pinfo,ctx)) {
                 DOCA_LOG_DBG("failed create new entry");
                 return -1;

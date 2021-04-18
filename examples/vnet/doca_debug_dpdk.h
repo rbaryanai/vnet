@@ -18,7 +18,6 @@ enum {
 #define doca_log_mac(item, eth_addr) \
 	doca_log_buff("%s%02X:%02X:%02X:%02X:%02X:%02X ", item, eth_addr[0], \
 		eth_addr[1], eth_addr[2], eth_addr[3],	eth_addr[4], eth_addr[5]);
-#define DEBUG_FLAG_ON(flage) (debug_flage & flage)
 
 struct dump_hdr {
 	uint8_t protocal;

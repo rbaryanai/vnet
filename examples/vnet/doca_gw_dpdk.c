@@ -19,7 +19,6 @@ DOCA_LOG_MODULE(doca_gw_dpdk);
 //TODO move this code later
 
 struct doca_gw_engine {
-    struct doca_gw_pipe_dpdk_flow_list pipe_flows;
     struct doca_id_pool *meter_pool;
     struct doca_id_pool *meter_profile_pool;
 };
@@ -30,56 +29,14 @@ static struct doca_gw_port *doca_gw_used_ports[DOCA_GW_MAX_PORTS];
 
 void doca_gw_init_dpdk(__rte_unused struct doca_gw_cfg *cfg)
 {
-	uint8_t pip_idx;
-	struct doca_gw_pipe_dpdk_flow *pipe_flow;
 	struct doca_id_pool_cfg pool_cfg = { .size = cfg->total_sessions, .min = 1 };
-
-	memset(doca_gw_used_ports,0,sizeof(doca_gw_used_ports));
 	memset(&doca_gw_engine,0, sizeof(doca_gw_engine));
-	LIST_INIT(&doca_gw_engine.pipe_flows.free_head);
-	for(pip_idx = 0 ; pip_idx < MAX_PIP_FLOWS; pip_idx++){
-		pipe_flow = &doca_gw_engine.pipe_flows.pipe_flows[pip_idx];
-		memset(pipe_flow, 0x0, sizeof(struct doca_gw_pipe_dpdk_flow));
-		LIST_INSERT_HEAD(&doca_gw_engine.pipe_flows.free_head, pipe_flow, free_list);
-	}
-
+	memset(doca_gw_used_ports,0,sizeof(doca_gw_used_ports));
 	doca_gw_engine.meter_pool = doca_id_pool_create(&pool_cfg);
 	doca_gw_engine.meter_profile_pool = doca_id_pool_create(&pool_cfg);
 	//todo, need remove to init_port 
 	doca_gw_dpdk_init_port(0);
 	doca_gw_dpdk_init_port(1);
-}
-
-/**
- * @brief get free pipeline flow from arry by used flage, currently.
- *    
- * @entry match
- *
- * @return 
- */
-static struct doca_gw_pipe_dpdk_flow*
-doca_gw_dpdk_get_free_pipe(void)
-{
-	uint8_t idx;
-	struct doca_gw_pipe_dpdk_flow *pipe_flow = NULL;
-
-	if (LIST_EMPTY(&doca_gw_engine.pipe_flows.free_head))
-		return NULL;
-	pipe_flow = LIST_FIRST(&doca_gw_engine.pipe_flows.free_head);
-	LIST_REMOVE(pipe_flow, free_list);
-	memset(pipe_flow, 0x0, sizeof(struct doca_gw_pipe_dpdk_flow));
-	for (idx = 0 ; idx < MAX_ITEMS; idx++)
-		pipe_flow->item_entry[idx].item = &pipe_flow->items[idx];
-	for (idx = 0 ; idx < MAX_ACTIONS; idx++)
-		pipe_flow->action_entry[idx].action = &pipe_flow->actions[idx];
-	return pipe_flow;
-}
-
-static void
-doca_gw_dpdk_pipe_release(struct doca_gw_pipe_dpdk_flow *pipe_flow)
-{
-	//TODO: need lock and set status 
-	LIST_INSERT_HEAD(&doca_gw_engine.pipe_flows.free_head, pipe_flow, free_list);
 }
 
 static int
@@ -808,18 +765,12 @@ static int doca_gw_dpdk_build_fwd(struct doca_gw_pipe_dpdk_flow *pipe,
 	return 0;
 }
 
-static uint32_t doca_gw_dpdk_create_meter_profile(uint16_t port_id, struct doca_gw_monitor *mon)
+static int
+doca_gw_dpdk_create_meter_profile(uint16_t port_id, uint32_t id, struct doca_gw_monitor *mon)
 {
 	int ret;
 	struct rte_mtr_error error;
 	struct rte_mtr_meter_profile mp;
-	uint32_t meter_prof_id = doca_id_pool_alloc_id(doca_gw_engine.meter_profile_pool);
-
-        if (meter_prof_id <= 0) {
-            //TODO should be better handled
-            DOCA_LOG_ERR("out of meter profile ids");
-            return 0;
-        }
 
 	memset(&mp, 0, sizeof(struct rte_mtr_meter_profile));
 	mp.alg = RTE_MTR_SRTCM_RFC2697;
@@ -827,44 +778,64 @@ static uint32_t doca_gw_dpdk_create_meter_profile(uint16_t port_id, struct doca_
 	mp.srtcm_rfc2697.cbs = mon->m.cbs;
 	mp.srtcm_rfc2697.ebs = 0;
 
-	ret = rte_mtr_meter_profile_add
-		(port_id, meter_prof_id, &mp, &error);
+	ret = rte_mtr_meter_profile_add(port_id, id, &mp, &error);
 	if (ret != 0) {
 		DOCA_LOG_ERR("Port %u create Profile id %u error(%d) message: %s\n",
-			port_id, meter_prof_id, error.type,
-			error.message ? error.message : "(no stated reason)");
-		return 0;
-	}
-	return meter_prof_id;
-}
-
-static int
-doca_gw_dpdk_destroy_meter_profile(uint16_t port_id, uint32_t prof_id)
-{
-	struct rte_mtr_error error;
-
-	if (rte_mtr_meter_profile_delete(port_id, prof_id, &error)) {
-		DOCA_LOG_ERR("Port %u del profile %u error(%d) message: %s\n",
-			port_id, prof_id, error.type,
+			port_id, id, error.type,
 			error.message ? error.message : "(no stated reason)");
 		return -1;
 	}
 	return 0;
 }
 
-static uint32_t
-doca_gw_dpdk_create_meter_rule(int port_id, uint32_t prof_id)
+static int
+doca_gw_dpdk_create_meter_policy(uint16_t port_id, uint32_t policy_id,
+						struct doca_fwd_table_cfg *fwd_cfg)
+{
+	int ret;
+	struct rte_mtr_error error;
+	struct rte_flow_action_rss conf;
+	struct rte_flow_action g_actions[2], r_actions[2];
+	const struct rte_flow_action *actions[RTE_COLORS];
+
+	if (fwd_cfg->type != DOCA_FWD_RSS) {
+		DOCA_LOG_ERR("unsupport fwd type:%d\n", fwd_cfg->type);
+		return -1;
+	}
+	memset(&conf, 0x0, sizeof(conf));
+	conf.queue_num = fwd_cfg->rss.num_queues;
+	conf.func = RTE_ETH_HASH_FUNCTION_DEFAULT;
+	conf.types = doca_gw_get_rss_type(fwd_cfg->rss.rss_flags);
+	conf.queue = fwd_cfg->rss.queues;
+	g_actions[0].type = RTE_FLOW_ACTION_TYPE_RSS;
+	g_actions[0].conf = &conf;
+	g_actions[1].type = RTE_FLOW_ACTION_TYPE_END;
+	g_actions[1].conf = NULL;
+
+	r_actions[0].type = RTE_FLOW_ACTION_TYPE_DROP;
+	r_actions[0].conf = NULL;
+	r_actions[1].type = RTE_FLOW_ACTION_TYPE_END;
+	r_actions[1].conf = NULL;
+
+	actions[0] = &g_actions[0];
+	actions[1] = NULL;
+	actions[2] = &r_actions[0];
+
+	ret = rte_mtr_meter_policy_create(port_id, policy_id, actions, &error);
+	if (ret) {
+		printf("meter add failed port_id  %d\n", port_id);
+		return -1;
+	}
+	return 0;
+}
+
+static int
+doca_gw_dpdk_create_meter_rule(int port_id, uint32_t meter_id,
+					struct doca_gw_pipelne_entry *pipe_entry)
 {
 	int ret;
 	struct rte_mtr_params params;
 	struct rte_mtr_error error;
-	uint32_t meter_id = doca_id_pool_alloc_id(doca_gw_engine.meter_pool);
-
-        if (meter_id < 0) {
-            //TODO: better handle
-            DOCA_LOG_ERR("failed to allocate meter id");
-            return 0;
-        }
 
 	memset(&params, 0, sizeof(struct rte_mtr_params));
 	params.meter_enable = 1;
@@ -873,12 +844,10 @@ doca_gw_dpdk_create_meter_rule(int port_id, uint32_t prof_id)
 	params.dscp_table = NULL;
 
 	/*create meter*/
-	params.meter_profile_id = prof_id;
-	params.action[RTE_COLOR_GREEN] = MTR_POLICER_ACTION_COLOR_GREEN;
-	params.action[RTE_COLOR_YELLOW] = MTR_POLICER_ACTION_COLOR_YELLOW;
-	params.action[RTE_COLOR_RED] = MTR_POLICER_ACTION_DROP;
+	params.meter_profile_id = pipe_entry->meter_profile_id;
+	params.meter_policy_id = pipe_entry->meter_policy_id;
 
-	ret = rte_mtr_create(port_id, meter_id, &params, 1, &error);
+	ret = rte_mtr_create(port_id, meter_id, &params, 0, &error);
 	if (ret != 0) {
 		DOCA_LOG_ERR("Port %u create meter idx(%d) error(%d) message: %s\n",
 			port_id, meter_id, error.type,
@@ -888,56 +857,61 @@ doca_gw_dpdk_create_meter_rule(int port_id, uint32_t prof_id)
 	return meter_id++;
 }
 
-static int
-doca_gw_dpdk_destroy_meter_rule(int port_id, uint32_t mtr_id)
-{
-	struct rte_mtr_error error;
-
-	if (rte_mtr_destroy(port_id, mtr_id, &error)) {
-		DOCA_LOG_ERR("Port %u destroy meter(%d) error(%d) message: %s\n",
-			port_id, mtr_id, error.type,
-			error.message ? error.message : "(no stated reason)");
-		return -1;
-	}
-	return 0;
-}
-
 static int 
-doca_gw_dpdk_build_meter_action(struct doca_gw_pipelne_entry *pipe_entry, uint16_t port_id, 
-                                                        struct doca_dpdk_action_entry *entry, 
-							struct doca_gw_monitor *mon)
+doca_gw_dpdk_build_meter_action(struct doca_gw_pipelne_entry *pipe_entry,
+							uint16_t port_id,
+							struct doca_dpdk_action_entry *entry, 
+							struct doca_gw_monitor *mon,
+							struct doca_fwd_table_cfg *cfg)
 {
+	int ret;
 	struct rte_flow_action *action = entry->action;
 	struct rte_flow_action_meter *meter_conf;
 	struct doca_dpdk_action_meter_data *meter_data;
+	//uint32_t id = doca_id_pool_alloc_id(doca_gw_engine.meter_pool);  1 - 4096 
+	static uint32_t id = 0;
 
-	// todo: how to prevent profile create many times.
+	id++;
+	if (id <= 0) {
+		//TODO should be better handled
+		DOCA_LOG_ERR("out of meter profile ids");
+		return 0;
+	}
+
 	meter_data = &entry->action_data.meter;
-	meter_data->prof_id = doca_gw_dpdk_create_meter_profile(port_id, mon);
-	if (!meter_data->prof_id)
+	ret = doca_gw_dpdk_create_meter_profile(port_id, id, mon);
+	if (ret < 0)
 		return -1;
-        pipe_entry->meter_profile_id = meter_data->prof_id;
+	ret = doca_gw_dpdk_create_meter_policy(port_id, id, cfg);
+	if (ret < 0)
+		return -1;
+	meter_data->policy_id = id;
+	meter_data->prof_id = id;
+	pipe_entry->meter_profile_id = meter_data->prof_id;
+	pipe_entry->meter_policy_id = meter_data->policy_id;
 	meter_conf = &meter_data->conf;
-	meter_conf->mtr_id = doca_gw_dpdk_create_meter_rule(port_id, meter_data->prof_id);
-	if (!meter_conf->mtr_id)
+	ret = doca_gw_dpdk_create_meter_rule(port_id, id, pipe_entry);
+	if (ret < 0)
 		return -1;
+	pipe_entry->meter_id = id;
+	meter_conf->mtr_id = id;
 	action->type = RTE_FLOW_ACTION_TYPE_METER;
 	action->conf = meter_conf;
-        pipe_entry->meter_id = meter_conf->mtr_id;
 	return 0;
 }
 
 static int
 doca_gw_dpdk_build_monitor_action(struct doca_gw_pipelne_entry *pipe_entry,
-                                  struct doca_gw_pipe_dpdk_flow *pipe, 
-			          struct doca_gw_monitor *mon)
+						struct doca_gw_pipe_dpdk_flow *pipe, 
+						struct doca_gw_monitor *mon,
+						struct doca_fwd_table_cfg *cfg)
 {
 	uint16_t port_id = pipe->port_id;
 	struct doca_dpdk_action_entry *entry;
 
 	if (mon->flags & DOCA_GW_METER) {
 		entry = &pipe->action_entry[pipe->nb_actions_entry++];
-		if (doca_gw_dpdk_build_meter_action(pipe_entry, port_id, entry, mon))
+		if (doca_gw_dpdk_build_meter_action(pipe_entry, port_id, entry, mon, cfg))
 			return -1;
 	}
 	//todo:  count/aging...
@@ -989,6 +963,8 @@ doca_gw_dpdk_create_flow(uint16_t port_id,
 	struct rte_flow *flow;
 	struct rte_flow_error err;
 
+	doca_dump_rte_flow("create rte flow:", port_id, attr,
+		pattern, actions);
 	flow = rte_flow_create(port_id, attr, pattern, actions, &err);
 	if (!flow) {
 		DOCA_LOG_ERR("Port %u create flow fail, type %d message: %s\n",
@@ -996,21 +972,6 @@ doca_gw_dpdk_create_flow(uint16_t port_id,
 			err.message ? err.message : "(no stated reason)");
 	}
 	return flow;
-}
-
-static int
-doca_gw_dpdk_free_flow(uint16_t port_id, struct rte_flow *flow)
-{
-	int ret;
-	struct rte_flow_error err;
-
-	ret = rte_flow_destroy(port_id, flow, &err);
-	if (ret) {
-		DOCA_LOG_ERR("Port %u free flow fail, type %d message: %s\n",
-			port_id, err.type,
-			err.message ? err.message : "(no stated reason)");	
-	}
-	return ret;
 }
 
 //create flow gourp 0 match eth action jump group 1
@@ -1037,12 +998,12 @@ doca_gw_dpdk_create_root_jump(uint16_t port_id)
 
 /*default match, -> queue[0]*/
 static struct rte_flow*
-doca_gw_dpdk_create_def_queue(uint16_t port_id)
+doca_gw_dpdk_create_def_rss(uint16_t port_id)
 {
 	struct rte_flow_attr attr;
 	struct rte_flow_item items[MAX_ITEMS];
 	struct rte_flow_action actions[MAX_ACTIONS];
-	struct rte_flow_action_queue queue;
+	struct doca_dpdk_action_rss_data rss;
 
 	memset(&attr, 0x0, sizeof(struct rte_flow_attr));
 	memset(items, 0x0, sizeof(items));
@@ -1051,13 +1012,19 @@ doca_gw_dpdk_create_def_queue(uint16_t port_id)
 	attr.ingress = 1;
 	attr.priority = MAX_FLOW_FRIO;
 	items[0].type = RTE_FLOW_ITEM_TYPE_ETH;
-	items[0].type = RTE_FLOW_ITEM_TYPE_END;
-	queue.index = 0;
-	actions[0].type = RTE_FLOW_ACTION_TYPE_QUEUE;
-	actions[0].conf = &queue;
+	items[1].type = RTE_FLOW_ITEM_TYPE_END;
 
+	memset(&rss, 0x0, sizeof(rss));
+	rss.queue[0] = 0;
+	rss.conf.queue_num = 1;
+	rss.conf.func = RTE_ETH_HASH_FUNCTION_DEFAULT;
+	rss.conf.types = ETH_RSS_IP | ETH_RSS_UDP | ETH_RSS_TCP;
+	rss.conf.queue = rss.queue;
+	actions[0].type = RTE_FLOW_ACTION_TYPE_RSS;
+	actions[0].conf = &rss.conf;
 	return doca_gw_dpdk_create_flow(port_id, &attr, items, actions);
 }
+
 
 static struct rte_flow *
 doca_gw_dpdk_pipe_create_entry_flow(struct doca_gw_pipelne_entry *entry, struct doca_gw_pipe_dpdk_flow *pipe,
@@ -1065,7 +1032,7 @@ doca_gw_dpdk_pipe_create_entry_flow(struct doca_gw_pipelne_entry *entry, struct 
 					struct doca_gw_monitor *mon, struct doca_fwd_table_cfg *cfg,
 					__rte_unused struct doca_gw_error *err)
 {
-	DOCA_LOG_INFO("pip create flow:\n");
+	DOCA_LOG_DBG("pip create new flow:\n");
 	doca_dump_gw_match(match);
 	doca_dump_gw_actions(actions);
 	pipe->nb_actions_entry = pipe->nb_actions_pipe;
@@ -1084,14 +1051,11 @@ doca_gw_dpdk_pipe_create_entry_flow(struct doca_gw_pipelne_entry *entry, struct 
 		DOCA_LOG_ERR("create monitor action fail.\n");
 		return NULL;
 	}
-	/*if different fwd action, need over write this action[x] ??*/
-	if (doca_gw_dpdk_build_fwd(pipe, cfg)) {
-		DOCA_LOG_ERR("build pipe fwd action fail.\n");
+	if (!(mon->flags & DOCA_GW_METER) && doca_gw_dpdk_build_fwd(pipe, cfg)) {
+		DOCA_LOG_ERR("build pipe fwd action fail.");
 		return NULL;
 	}
 	doca_gw_dpdk_build_end_action(pipe);
-	doca_dump_rte_flow("create rte flow:", pipe->port_id, &pipe->attr,
-		pipe->items, pipe->actions);
 	return doca_gw_dpdk_create_flow(pipe->port_id, &pipe->attr, pipe->items, pipe->actions);
 }
 
@@ -1107,26 +1071,65 @@ doca_gw_dpdk_pipe_create_flow(struct doca_gw_pipeline *pipeline,
 	entry = (struct doca_gw_pipelne_entry *)malloc(sizeof(struct doca_gw_pipelne_entry));
 	if (entry == NULL)
 		return NULL;
-    entry->pipe_entry = doca_gw_dpdk_pipe_create_entry_flow(entry, pipeline->handler,
+    entry->pipe_entry = doca_gw_dpdk_pipe_create_entry_flow(entry, &pipeline->flow,
 		match, actions, mon, cfg, err);
     if (entry->pipe_entry == NULL) {
-            DOCA_LOG_INFO("create pip entry fail.\n");
-            goto free_pipe_entry;
+		DOCA_LOG_INFO("create pip entry fail,idex:%d", pipeline->pipe_entry_id);
+		goto free_pipe_entry;
     }
     entry->id = pipeline->pipe_entry_id++;
+	rte_spinlock_lock(&pipeline->entry_lock);
+	pipeline->nb_pipe_entrys++;
 	LIST_INSERT_HEAD(&pipeline->entry_list, entry, next);
-    DOCA_LOG_INFO("offload[%d]: pipeline=%p, match =%pi mod %p",
-		entry->id, pipeline, match, actions);
+	rte_spinlock_unlock(&pipeline->entry_lock);
+	DOCA_LOG_DBG("offload[%d]: pipeline=%p, match =%pi mod %p",
+	entry->id, pipeline, match, actions);
 	return entry;
 free_pipe_entry:
 	free(entry);
 	return NULL;
 }
 
-
 int doca_gw_dpdk_pipe_free_entry(uint16_t portid, struct doca_gw_pipelne_entry *entry)
 {
-	return doca_gw_dpdk_free_flow(portid, (struct rte_flow *)entry->pipe_entry);
+	int ret;
+	struct rte_flow_error flow_err;
+	struct rte_mtr_error mtr_err;
+
+	ret = rte_flow_destroy(portid, (struct rte_flow *)entry->pipe_entry, &flow_err);
+	if (ret) {
+		DOCA_LOG_ERR("Port %u free flow fail, type %d message: %s",
+			portid, flow_err.type, flow_err.message ? flow_err.message : "(no stated reason)");
+		return -1;
+	}
+	if (entry->meter_id) {
+		ret = rte_mtr_destroy(portid, entry->meter_id, &mtr_err);
+		if (ret) {
+			DOCA_LOG_ERR("Port %u free meter rule id %u err, type %d message: %s",
+				portid, entry->meter_id, mtr_err.type,
+				mtr_err.message ? mtr_err.message : "(no stated reason)");
+			return -1;
+		}
+	}	
+	if (entry->meter_policy_id) {
+		ret = rte_mtr_meter_policy_delete(portid, entry->meter_policy_id, &mtr_err);
+		if (ret) {
+			DOCA_LOG_ERR("Port %u free meter policy id %u err, type %d message: %s",
+				portid, entry->meter_policy_id, mtr_err.type,
+				mtr_err.message ? mtr_err.message : "(no stated reason)");
+			return -1;
+		}
+	}
+	if (entry->meter_profile_id) {
+		ret = rte_mtr_meter_profile_delete(portid, entry->meter_profile_id, &mtr_err);
+		if (ret) {
+			DOCA_LOG_ERR("Port %u free meter profile id %u err, type %d message: %s",
+				portid, entry->meter_profile_id, mtr_err.type,
+				mtr_err.message ? mtr_err.message : "(no stated reason)");
+			return -1;
+		}
+	}
+	return 0;
 }
 /*todo , how to manager root/queue flows for one port.*/
 int
@@ -1137,7 +1140,7 @@ doca_gw_dpdk_init_port(uint16_t port_id)
 	root = doca_gw_dpdk_create_root_jump(port_id);
 	if(root == NULL)
 		return -1;
-	queue = doca_gw_dpdk_create_def_queue(port_id);
+	queue = doca_gw_dpdk_create_def_rss(port_id);
 	if(queue == NULL)
 		return -1;
 	return 0;
@@ -1150,58 +1153,66 @@ doca_gw_dpdk_init_port(uint16_t port_id)
  *
  * @return 
  */
-static struct doca_gw_pipe_dpdk_flow*
-doca_gw_dpdk_create_pipe_flow(struct doca_gw_pipeline_cfg *cfg, struct doca_gw_error *err)
+static int
+doca_gw_dpdk_create_pipe_flow(struct doca_gw_pipe_dpdk_flow *flow, 
+							struct doca_gw_pipeline_cfg *cfg,
+							struct doca_gw_error *err)
 {
 	int ret;
-	struct doca_gw_pipe_dpdk_flow *pipe_flow;
 
-	pipe_flow = doca_gw_dpdk_get_free_pipe();
-	if (pipe_flow == NULL) {
-		err->type = DOCA_ERROR_NOMORE_PIPE_RESOURCE;
-		return NULL;
-	}
-	pipe_flow->port_id = (uint16_t)cfg->port->port_id;  
-	pipe_flow->attr.ingress = 1;
-	pipe_flow->attr.group = 1; // group 0 jump group 1
-	ret = doca_gw_dpdk_build_item(cfg->match, pipe_flow, err);
+	flow->port_id = (uint16_t)cfg->port->port_id;
+	flow->attr.ingress = 1;
+	flow->attr.group = 1; // group 0 jump group 1
+	ret = doca_gw_dpdk_build_item(cfg->match, flow, err);
 	if (ret) {
 		err->type = DOCA_ERROR_PIPE_BUILD_IMTE_ERROR;
-		goto free_pipe;
+		return -1;
 	}
-	ret = doca_gw_dpdk_build_action(cfg, pipe_flow);
+	ret = doca_gw_dpdk_build_action(cfg, flow);
 	if (ret) {
 		err->type = DOCA_ERROR_PIPE_BUILD_ACTION_ERROR;
-		goto free_pipe;
+		return -1;
 	}
-	doca_dump_rte_flow("create pipe:", pipe_flow->port_id, &pipe_flow->attr,
-		pipe_flow->items, pipe_flow->actions);
-	return pipe_flow;
-free_pipe:
-	doca_gw_dpdk_pipe_release(pipe_flow);
-	return NULL;
+	doca_dump_rte_flow("create pipe:", flow->port_id, &flow->attr,
+		flow->items, flow->actions);
+	return 0;
 }
 
-struct doca_gw_pipeline *doca_gw_dpdk_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_gw_error *err)
+struct doca_gw_pipeline*
+doca_gw_dpdk_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_gw_error *err)
 {
-    static uint32_t pipe_id = 1;
-    struct doca_gw_pipeline *pl;
+	int ret;
+	uint32_t idx;
+	static uint32_t pipe_id = 1;
+	struct doca_gw_pipeline *pl;
+	struct doca_gw_pipe_dpdk_flow *flow;
 
-	DOCA_LOG_INFO("port:%u create pipe:%s\n", cfg->port->port_id, cfg->name);
+	DOCA_LOG_DBG("port:%u create pipe:%s\n", cfg->port->port_id, cfg->name);
 	doca_dump_gw_match(cfg->match);
 	doca_dump_gw_actions(cfg->actions);
-
 	pl = malloc(sizeof(struct doca_gw_pipeline));
-    if (pl == NULL)
+	if (pl == NULL)
 		return NULL;
-    memset(pl,0,sizeof(struct doca_gw_pipeline));
+	memset(pl,0,sizeof(struct doca_gw_pipeline));
+	strcpy(pl->name, cfg->name);
 	LIST_INIT(&pl->entry_list);
+	rte_spinlock_init(&pl->entry_lock);
 	pl->id = pipe_id++;
-    pl->handler = doca_gw_dpdk_create_pipe_flow(cfg, err);
+	flow = &pl->flow;
+	for (idx = 0 ; idx < MAX_ITEMS; idx++)
+		flow->item_entry[idx].item = &pl->flow.items[idx];
+	for (idx = 0 ; idx < MAX_ACTIONS; idx++)
+		flow->action_entry[idx].action = &pl->flow.actions[idx];
+	ret = doca_gw_dpdk_create_pipe_flow(flow, cfg, err);
+	if(ret) {
+		free(pl);
+		return NULL;
+	}
+	rte_spinlock_lock(&cfg->port->pipe_lock);
 	LIST_INSERT_HEAD(&cfg->port->pipe_list, pl, next);
+	rte_spinlock_unlock(&cfg->port->pipe_lock);
     return pl;
 }
-
 
 static struct doca_gw_port *doca_get_port_byid(uint8_t port_id)
 {
@@ -1218,6 +1229,7 @@ static struct doca_gw_port *doca_alloc_port_byid(uint8_t port_id, struct doca_gw
 	memset(port, 0x0, sizeof(struct doca_gw_port));
 	port->port_id = port_id;
 	LIST_INIT(&port->pipe_list);
+	rte_spinlock_init(&port->pipe_lock);
 	return port;
 }
 
@@ -1234,7 +1246,8 @@ static bool doca_gw_save_port(struct doca_gw_port *port)
     return false;
 }
 
-struct doca_gw_port * doca_gw_dpdk_port_start(struct doca_gw_port_cfg *cfg, struct doca_gw_error *err)
+struct doca_gw_port * doca_gw_dpdk_port_start(struct doca_gw_port_cfg *cfg,
+				__rte_unused struct doca_gw_error *err)
 {
 	struct doca_gw_port *port = doca_alloc_port_byid(cfg->port_id, cfg);
 
@@ -1245,23 +1258,26 @@ struct doca_gw_port * doca_gw_dpdk_port_start(struct doca_gw_port_cfg *cfg, stru
         goto fail_port_start;
     return port;
 fail_port_start:
-    free(port);
-    return NULL;
+	free(port);
+	return NULL;
 }
-
 
 static void doca_gw_free_pipe(uint16_t portid, struct doca_gw_pipeline *pipe)
 {
+	uint32_t nb_pipe_entry = 0;
 	struct doca_gw_pipelne_entry *entry;
 
-	DOCA_LOG_INFO("portid:%u free pipeid:%u\n", portid,pipe->id);
+	DOCA_LOG_INFO("portid:%u free pipeid:%u", portid,pipe->id);
+	rte_spinlock_lock(&pipe->entry_lock);
 	while((entry = LIST_FIRST(&pipe->entry_list))) {
 		LIST_REMOVE(entry, next);
-		DOCA_LOG_INFO("free pipe entry:%d\n", entry->id);
+		nb_pipe_entry++;
 		doca_gw_dpdk_pipe_free_entry(portid, entry);
 		free(entry);		
 	}
+	rte_spinlock_unlock(&pipe->entry_lock);
 	free(pipe);
+	DOCA_LOG_INFO("total free pipe entry:%d", nb_pipe_entry);
 }
 
 void doca_gw_dpdk_destroy(uint16_t port_id)
@@ -1269,13 +1285,35 @@ void doca_gw_dpdk_destroy(uint16_t port_id)
 	struct doca_gw_port *port;
 	struct doca_gw_pipeline *pipe;
 
-	DOCA_LOG_INFO("destroy port_id:%u\n", port_id);
 	port = doca_get_port_byid(port_id);
+	if (port)
+		return;
+	rte_spinlock_lock(&port->pipe_lock);
 	while((pipe = LIST_FIRST(&port->pipe_list))) {
 		LIST_REMOVE(pipe, next);
 		doca_gw_free_pipe(port_id, pipe);
 	}
+	rte_spinlock_unlock(&port->pipe_lock);
 	doca_gw_used_ports[port_id] = NULL;
 	free(port);
+}
+
+void doca_gw_dpdk_dump_pipeline(uint16_t port_id)
+{
+	struct doca_gw_port *port;
+	struct doca_gw_pipeline *curr;
+	static const char *nic_stats_border = "########################";
+
+	printf("\n  %s Pipe line info for port %-2d %s\n",
+	       nic_stats_border, port_id, nic_stats_border);
+	port = doca_get_port_byid(port_id);
+	rte_spinlock_lock(&port->pipe_lock);
+	curr = LIST_FIRST(&port->pipe_list);
+	while(curr) {
+		printf("  pipe line id:%u,name:%s,flow entry count:%u\n",
+			curr->id, curr->name, curr->nb_pipe_entrys);
+		curr = LIST_NEXT(curr, next);
+	}
+	rte_spinlock_unlock(&port->pipe_lock);
 }
 
