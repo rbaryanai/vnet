@@ -77,7 +77,7 @@ struct doca_dpdk_item_tcp_data {
 	struct rte_flow_item_tcp mask;
 };
 
-struct doca_gw_item_data {
+struct doca_dpdk_item_data {
 	union {
 		struct doca_dpdk_item_eth_data eth;
 		struct doca_dpdk_item_vlan_data vlan;
@@ -94,8 +94,8 @@ struct doca_gw_item_data {
 struct doca_dpdk_item_entry {
 	uint8_t flags;
 	struct rte_flow_item *item;
-	struct doca_gw_item_data item_data;
-	int (*modify_item)(struct doca_dpdk_item_entry*, struct doca_gw_match*);
+	struct doca_dpdk_item_data item_data;
+	int (*modify_item)(struct doca_dpdk_item_entry*, struct doca_flow_match*);
 };
 
 struct doca_dpdk_action_mac_data {
@@ -139,7 +139,7 @@ struct doca_dpdk_action_l4_port_data {
 	struct rte_flow_action_set_tp l4port;
 };
 
-struct rte_flow_action_data {
+struct doca_dpdk_action_data {
 	union {
 		struct doca_dpdk_action_jump_data jump;
 		struct doca_dpdk_action_mac_data mac; //include src/dst
@@ -154,31 +154,32 @@ struct rte_flow_action_data {
 
 struct doca_dpdk_action_entry {
 	struct rte_flow_action *action;
-	struct rte_flow_action_data action_data;
-	int (*modify_action)(struct doca_dpdk_action_entry*, struct doca_gw_actions*);
+	struct doca_dpdk_action_data action_data;
+	int (*modify_action)(struct doca_dpdk_action_entry*, struct doca_flow_actions*);
 };
 
-struct doca_gw_pipe_dpdk_flow {
+struct doca_dpdk_pipeline {
 	uint16_t port_id;
 	uint8_t nb_items;
 	uint8_t nb_actions_pipe;
 	uint8_t nb_actions_entry;
+	uint32_t meter_id;/*meterid = profileid = policyid*/
 	struct rte_flow_attr attr;
 	struct rte_flow_item items[MAX_ITEMS];
 	struct doca_dpdk_item_entry item_entry[MAX_ITEMS];
 	struct rte_flow_action actions[MAX_ACTIONS];
 	struct doca_dpdk_action_entry action_entry[MAX_ACTIONS];
-	LIST_ENTRY(doca_gw_pipe_dpdk_flow) free_list;
+	LIST_ENTRY(doca_dpdk_pipeline) free_list;
 };
 
-struct doca_gw_pipe_dpdk_flow_list {
-	struct doca_gw_pipe_dpdk_flow pipe_flows[MAX_PIP_FLOWS];
-	LIST_HEAD(, doca_gw_pipe_dpdk_flow) free_head;
+struct doca_dpdk_pipeline_list {
+	struct doca_dpdk_pipeline pipe_flows[MAX_PIP_FLOWS];
+	LIST_HEAD(, doca_dpdk_pipeline) free_head;
 };
 
 struct endecap_layer {
 	uint16_t layer;
-	void (*fill_data)(uint8_t **, struct doca_gw_pipeline_cfg *);
+	void (*fill_data)(uint8_t **, struct doca_flow_pipeline_cfg *);
 };
 
 enum DOCA_DECAP_HDR {
@@ -247,7 +248,7 @@ doca_set_item_vni_max(void *vni)
 }
 
 static inline bool 
-doca_match_is_ipv4(struct doca_gw_match *match, uint8_t type)
+doca_match_is_ipv4(struct doca_flow_match *match, uint8_t type)
 {
 	struct doca_ip_addr ip_addr;
 
@@ -260,7 +261,7 @@ doca_match_is_ipv4(struct doca_gw_match *match, uint8_t type)
 }
 
 static inline rte_be16_t
-doca_gw_get_l3_protol(struct doca_gw_match *match, uint8_t type)
+doca_gw_get_l3_protol(struct doca_flow_match *match, uint8_t type)
 {
 	uint16_t protocol;
 	if (type == OUTER_MATCH && match->vlan_id)
@@ -271,38 +272,39 @@ doca_gw_get_l3_protol(struct doca_gw_match *match, uint8_t type)
 	return rte_cpu_to_be_16(protocol);
 }
 
-static inline bool doca_match_is_tcp(struct doca_gw_match *match)
+static inline bool doca_match_is_tcp(struct doca_flow_match *match)
 {
 	if (match->tun.type == DOCA_TUN_NONE)
 		return (match->out_l4_type == IPPROTO_TCP);
 	return (match->in_l4_type == IPPROTO_TCP);
 }
 
-static inline bool doca_match_is_udp(struct doca_gw_match *match)
+static inline bool doca_match_is_udp(struct doca_flow_match *match)
 {
 	if (match->tun.type == DOCA_TUN_NONE)
 		return (match->out_l4_type == IPPROTO_UDP);
 	return (match->in_l4_type == IPPROTO_UDP);
 }
 
-void doca_gw_init_dpdk(struct doca_gw_cfg *cfg);
+void doca_gw_init_dpdk(struct doca_flow_cfg *cfg);
 
 struct doca_gw_pipeline*
-doca_gw_dpdk_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_gw_error *err);
+doca_gw_dpdk_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_flow_error *err);
 
-struct doca_gw_pipelne_entry*
-doca_gw_dpdk_pipe_create_flow(struct doca_gw_pipeline *pipeline,
-					struct doca_gw_match *match, struct doca_gw_actions *actions,
-					struct doca_gw_monitor *mon, struct doca_fwd_table_cfg *cfg,
-					struct doca_gw_error *err);
+
+struct doca_flow_pipeline_entry*
+doca_gw_dpdk_pipe_create_flow(struct doca_flow_pipeline *pipeline,
+					struct doca_flow_match *match, struct doca_flow_actions *actions,
+					struct doca_flow_monitor *mon, struct doca_flow_fwd_table_cfg *cfg,
+					struct doca_flow_error *err);
 
 
 
 int doca_gw_dpdk_init_port(uint16_t port_id);
-int doca_gw_dpdk_pipe_free_entry(uint16_t portid, struct doca_gw_pipelne_entry *entry);
+int doca_gw_dpdk_pipe_free_entry(uint16_t portid, struct doca_flow_pipeline_entry *entry);
 
-struct doca_gw_port *
-doca_gw_dpdk_port_start(struct doca_gw_port_cfg *cfg, struct doca_gw_error *err);
+struct doca_flow_port *
+doca_gw_dpdk_port_start(struct doca_flow_port_cfg *cfg, struct doca_flow_error *err);
 void doca_gw_dpdk_destroy(uint16_t port_id);
 void doca_gw_dpdk_dump_pipeline(uint16_t port_id);
 #endif
