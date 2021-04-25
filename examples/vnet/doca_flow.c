@@ -39,8 +39,8 @@ int doca_gw_init(struct doca_flow_cfg *cfg,struct doca_flow_error *err)
  *
  * @return 
  */
-struct doca_gw_pipelne_entry *doca_gw_pipeline_add_entry(uint16_t pipe_queue, 
-                      struct doca_gw_pipeline *pipeline, struct doca_flow_match *match,
+struct doca_flow_pipeline_entry *doca_flow_pipeline_add_entry(uint16_t pipe_queue, 
+                      struct doca_flow_pipeline *pipeline, struct doca_flow_match *match,
                       struct doca_flow_actions *actions,struct doca_flow_monitor *mon,
                       struct doca_fwd_tbl *fwd, struct doca_flow_error *err)
 {
@@ -50,7 +50,7 @@ struct doca_gw_pipelne_entry *doca_gw_pipeline_add_entry(uint16_t pipe_queue,
 	return doca_gw_dpdk_pipe_create_flow(pipeline, match, actions, mon, &fwd->cfg, err);
 }
 
-int doca_gw_rm_entry(uint16_t pipe_queue, struct doca_gw_pipelne_entry *entry)
+int doca_gw_rm_entry(uint16_t pipe_queue, struct doca_flow_pipeline_entry *entry)
 {
     DOCA_LOG_INFO("(pipe %d) HW release id%d",pipe_queue, entry->id);
 	// TODO: how to get the port id?

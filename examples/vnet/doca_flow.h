@@ -44,8 +44,8 @@
 #include "doca_net.h"
 
 struct doca_flow_port;
-struct doca_gw_pipeline; 
-struct doca_gw_pipelne_entry;
+struct doca_flow_pipeline; 
+struct doca_flow_pipeline_entry;
 
 enum doca_gw_modify_flags {
     DOCA_MOD_NONE = 0,
@@ -192,7 +192,7 @@ struct doca_flow_monitor {
 /**
  * @brief - pipeline definition
  */
-struct doca_gw_pipeline_cfg {
+struct doca_flow_pipeline_cfg {
     const char *name;
     struct doca_flow_port     *port;
     struct doca_flow_match    *match;
@@ -315,8 +315,8 @@ struct doca_gw_pipeline *doca_gw_create_pipe(struct doca_gw_pipeline_cfg *cfg, s
  *
  * @return entry ref on success and NULL otherwise with reason filled in err.
  */
-struct doca_gw_pipelne_entry *doca_gw_pipeline_add_entry(uint16_t pipe_queue, 
-                      struct doca_gw_pipeline *pipeline, struct doca_flow_match *match,
+struct doca_flow_pipeline_entry *doca_flow_pipeline_add_entry(uint16_t pipe_queue, 
+                      struct doca_flow_pipeline *pipeline, struct doca_flow_match *match,
                       struct doca_flow_actions *actions,struct doca_flow_monitor *mod,
                       struct doca_fwd_tbl *fwd, struct doca_flow_error *err);
 
@@ -344,7 +344,7 @@ int doca_gw_pipeline_update_default(uint16_t pipe_queue, struct doca_flow_port *
  *
  * @return 
  */
-int doca_gw_rm_entry(uint16_t pipe_queue, struct doca_gw_pipelne_entry *entry);
+int doca_gw_rm_entry(uint16_t pipe_queue, struct doca_flow_pipeline_entry *entry);
 
 
 /**
@@ -355,7 +355,7 @@ int doca_gw_rm_entry(uint16_t pipe_queue, struct doca_gw_pipelne_entry *entry);
  *
  * @return 0 on success
  */
-int doca_gw_query(struct doca_gw_pipelne_entry *pe, struct doca_gw_query *q);
+int doca_gw_query(struct doca_flow_pipeline_entry *pe, struct doca_gw_query *q);
 
 
 
@@ -370,7 +370,7 @@ int doca_gw_query(struct doca_gw_pipelne_entry *pe, struct doca_gw_query *q);
  *
  * @return true if there are more waiting entries for aging.
  */
-bool doca_gw_query_aging(struct doca_gw_pipelne_entry *arr, int arr_len, int *n);
+bool doca_gw_query_aging(struct doca_flow_pipeline_entry *arr, int arr_len, int *n);
 
 void doca_gw_destroy(uint16_t port_id);
 void doca_gw_dump_pipeline(uint16_t port_id);

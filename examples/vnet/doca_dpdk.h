@@ -178,7 +178,7 @@ struct doca_gw_pipe_dpdk_flow_list {
 
 struct endecap_layer {
 	uint16_t layer;
-	void (*fill_data)(uint8_t **, struct doca_gw_pipeline_cfg *);
+	void (*fill_data)(uint8_t **, struct doca_flow_pipeline_cfg *);
 };
 
 enum DOCA_DECAP_HDR {
@@ -290,8 +290,9 @@ void doca_gw_init_dpdk(struct doca_flow_cfg *cfg);
 struct doca_gw_pipeline*
 doca_gw_dpdk_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_flow_error *err);
 
-struct doca_gw_pipelne_entry*
-doca_gw_dpdk_pipe_create_flow(struct doca_gw_pipeline *pipeline,
+
+struct doca_flow_pipeline_entry*
+doca_gw_dpdk_pipe_create_flow(struct doca_flow_pipeline *pipeline,
 					struct doca_flow_match *match, struct doca_flow_actions *actions,
 					struct doca_flow_monitor *mon, struct doca_fwd_table_cfg *cfg,
 					struct doca_flow_error *err);
@@ -299,7 +300,7 @@ doca_gw_dpdk_pipe_create_flow(struct doca_gw_pipeline *pipeline,
 
 
 int doca_gw_dpdk_init_port(uint16_t port_id);
-int doca_gw_dpdk_pipe_free_entry(uint16_t portid, struct doca_gw_pipelne_entry *entry);
+int doca_gw_dpdk_pipe_free_entry(uint16_t portid, struct doca_flow_pipeline_entry *entry);
 
 struct doca_flow_port *
 doca_gw_dpdk_port_start(struct doca_flow_port_cfg *cfg, struct doca_flow_error *err);

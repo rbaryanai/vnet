@@ -42,7 +42,7 @@ int gw_parse_pkt_str(struct doca_pkt_info *pinfo, char *str, int len);
  *
  * @return 
  */
-struct doca_gw_pipeline *gw_init_ol_to_ul_pipeline(struct doca_flow_port *p);
+struct doca_flow_pipeline *gw_init_ol_to_ul_pipeline(struct doca_flow_port *p);
 
 /**
  * @brief - overlay to overlay pipeline
@@ -64,7 +64,7 @@ struct doca_gw_pipeline *gw_init_ol_to_ul_pipeline(struct doca_flow_port *p);
  *
  * @return 
  */
-struct doca_gw_pipeline *gw_init_ol_to_ol_pipeline(struct doca_flow_port *p);
+struct doca_flow_pipeline *gw_init_ol_to_ol_pipeline(struct doca_flow_port *p);
 
 
 
@@ -102,7 +102,7 @@ enum gw_classification gw_classifiy_pkt(struct doca_pkt_info *pinfo);
  *
  * @return handle
  */
-struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_info *pinfo, struct doca_gw_pipeline *pipeline);
+struct doca_flow_pipeline_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_info *pinfo, struct doca_flow_pipeline *pipeline);
 
 /**
  * @brief 
@@ -112,10 +112,10 @@ struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_inf
  *
  * @return 
  */
-struct doca_gw_pipelne_entry *gw_pipeline_add_ol_to_ol_entry(struct doca_pkt_info *pinfo, struct doca_gw_pipeline *pipeline);
+struct doca_flow_pipeline_entry *gw_pipeline_add_ol_to_ol_entry(struct doca_pkt_info *pinfo, struct doca_flow_pipeline *pipeline);
 
 
-void gw_rm_pipeline_entry(struct doca_gw_pipelne_entry *entry);
+void gw_rm_pipeline_entry(struct doca_flow_pipeline_entry *entry);
 
 struct doca_vnf *gw_get_doca_vnf(void);
 
