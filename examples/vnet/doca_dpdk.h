@@ -294,7 +294,7 @@ doca_gw_dpdk_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_flow_erro
 struct doca_flow_pipeline_entry*
 doca_gw_dpdk_pipe_create_flow(struct doca_flow_pipeline *pipeline,
 					struct doca_flow_match *match, struct doca_flow_actions *actions,
-					struct doca_flow_monitor *mon, struct doca_fwd_table_cfg *cfg,
+					struct doca_flow_monitor *mon, struct doca_flow_fwd_table_cfg *cfg,
 					struct doca_flow_error *err);
 
 

@@ -201,7 +201,7 @@ struct doca_flow_pipeline_cfg {
     bool                    count;    /* count for entire pipe */
 };
 
-enum doca_fwd_tbl_type {
+enum doca_flow_fwd_tbl_type {
     DOCA_FWD_RSS,
     DOCA_FWD_PORT
 };
@@ -215,8 +215,8 @@ enum doca_rss_type {
 /**
  * @brief - forwarding configuration
  */
-struct doca_fwd_table_cfg {
-    enum doca_fwd_tbl_type type;
+struct doca_flow_fwd_table_cfg {
+    enum doca_flow_fwd_tbl_type type;
     union {
         struct fwd_rss {
             uint32_t rss_flags;
@@ -244,7 +244,7 @@ struct doca_flow_query {
  *
  * @return 
  */
-struct doca_fwd_tbl *doca_gw_create_fwd_tbl(struct doca_fwd_table_cfg *cfg);
+struct doca_flow_fwd_tbl *doca_gw_create_fwd_tbl(struct doca_flow_fwd_table_cfg *cfg);
 
 /**
  * @brief 
@@ -318,7 +318,7 @@ struct doca_flow_pipeline *doca_gw_create_pipe(struct doca_gw_pipeline_cfg *cfg,
 struct doca_flow_pipeline_entry *doca_flow_pipeline_add_entry(uint16_t pipe_queue, 
                       struct doca_flow_pipeline *pipeline, struct doca_flow_match *match,
                       struct doca_flow_actions *actions,struct doca_flow_monitor *mod,
-                      struct doca_fwd_tbl *fwd, struct doca_flow_error *err);
+                      struct doca_flow_fwd_tbl *fwd, struct doca_flow_error *err);
 
 /**
  * @brief - default pipeline is match all, and send to SW.
@@ -335,7 +335,7 @@ struct doca_flow_pipeline_entry *doca_flow_pipeline_add_entry(uint16_t pipe_queu
  * @return 0 on success and error reason for other
  */
 int doca_flow_pipeline_update_default(uint16_t pipe_queue, struct doca_flow_port *port,
-                                    struct doca_fwd_tbl *fwd, struct doca_flow_error *err);
+                                    struct doca_flow_fwd_tbl *fwd, struct doca_flow_error *err);
 
 /**
  * @brief 

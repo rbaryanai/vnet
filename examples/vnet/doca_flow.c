@@ -9,11 +9,11 @@
 
 DOCA_LOG_MODULE(doca_flow);
 
-struct doca_fwd_tbl {
+struct doca_flow_fwd_tbl {
     const char * name;
     void * handler;
     uint32_t id;
-    struct doca_fwd_table_cfg cfg;
+    struct doca_flow_fwd_table_cfg cfg;
 };
 
 uint8_t *doca_flow_port_priv_data(struct doca_flow_port *p)
@@ -42,7 +42,7 @@ int doca_flow_init(struct doca_flow_cfg *cfg,struct doca_flow_error *err)
 struct doca_flow_pipeline_entry *doca_flow_pipeline_add_entry(uint16_t pipe_queue, 
                       struct doca_flow_pipeline *pipeline, struct doca_flow_match *match,
                       struct doca_flow_actions *actions,struct doca_flow_monitor *mon,
-                      struct doca_fwd_tbl *fwd, struct doca_flow_error *err)
+                      struct doca_flow_fwd_tbl *fwd, struct doca_flow_error *err)
 {
     if(pipeline == NULL || match == NULL || actions == NULL || mon == NULL)
         return NULL;
@@ -125,11 +125,11 @@ void doca_flow_dump_pipeline(uint16_t port_id)
 	doca_dpdk_dump_pipeline(port_id);
 }
 
-struct doca_fwd_tbl *doca_flow_create_fwd_tbl(struct doca_fwd_table_cfg *cfg)
+struct doca_flow_fwd_tbl *doca_flow_create_fwd_tbl(struct doca_flow_fwd_table_cfg *cfg)
 {
     static uint32_t fwd_id = 0;
-    struct doca_fwd_tbl *tbl = malloc(sizeof(struct doca_fwd_tbl));
-    memset(tbl, 0, sizeof(struct doca_fwd_tbl));
+    struct doca_flow_fwd_tbl *tbl = malloc(sizeof(struct doca_flow_fwd_tbl));
+    memset(tbl, 0, sizeof(struct doca_flow_fwd_tbl));
     tbl->cfg = *cfg;
     tbl->id = fwd_id++;
     DOCA_LOG_INFO("add fwd tbl");

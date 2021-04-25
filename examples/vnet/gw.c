@@ -117,22 +117,22 @@ static uint16_t gw_slb_peer_port(uint16_t port_id)
 }
 
 
-struct doca_fwd_tbl *sw_rss_fwd_tbl_port[GW_MAX_PORT_ID];
-struct doca_fwd_tbl *fwd_tbl_port[GW_MAX_PORT_ID];
+struct doca_flow_fwd_tbl *sw_rss_fwd_tbl_port[GW_MAX_PORT_ID];
+struct doca_flow_fwd_tbl *fwd_tbl_port[GW_MAX_PORT_ID];
 
 static
-struct doca_fwd_tbl *gw_build_port_fwd(int port_id)
+struct doca_flow_fwd_tbl *gw_build_port_fwd(int port_id)
 {
-    struct doca_fwd_table_cfg cfg = { .type = DOCA_FWD_PORT};
+    struct doca_flow_fwd_table_cfg cfg = { .type = DOCA_FWD_PORT};
     cfg.port.id = port_id;
     return doca_gw_create_fwd_tbl(&cfg);
 }
 
 
-static struct doca_fwd_tbl *gw_build_rss_fwd(int n_queues)
+static struct doca_flow_fwd_tbl *gw_build_rss_fwd(int n_queues)
 {
     int i;
-    struct doca_fwd_table_cfg cfg = {0};
+    struct doca_flow_fwd_table_cfg cfg = {0};
     uint16_t *queues;
 
     queues = malloc(sizeof(uint16_t) * n_queues);
