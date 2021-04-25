@@ -235,8 +235,24 @@ static void gw_build_encap_actions(struct doca_flow_actions *actions)
 
 static void gw_fill_monior(struct doca_flow_monitor *monitor)
 {
-    monitor->count = true;
+	uint16_t idx, n_queues = 2; /*how to input rss queue*/
+	uint16_t *queues;
+	struct doca_fwd_table_cfg *fwd = &monitor->meter.fwd;
+
+	monitor->flags = DOCA_GW_COUNT;
+	monitor->flags |= DOCA_GW_METER;
+	monitor->meter.cir = 100 * 1000 / 8;
+	monitor->meter.cbs = monitor->meter.cir / 8;
+
+	queues = malloc(sizeof(uint16_t) * n_queues);
+	for (idx = 1; idx < n_queues; idx++)/*queue 1 - n_queues*/
+		queues[idx - 1] = idx;
+	fwd->type = DOCA_FWD_RSS;
+	fwd->rss.queues = queues;
+	fwd->rss.rss_flags = DOCA_RSS_IP | DOCA_RSS_UDP | DOCA_RSS_IP;
+	fwd->rss.num_queues = n_queues - 1;
 }
+
 
 /**
  * @brief - build the underlay to overlay pipeline  
@@ -438,15 +454,6 @@ struct doca_flow_pipeline_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_
 
     actions.mod_dst_ip.a.ipv4_addr = (doca_pinfo_inner_ipv4_dst(pinfo) & rte_cpu_to_be_32(0x00ffffff))
                                     | rte_cpu_to_be_32(0x25000000); // change dst ip
-    //DELELTE
-    //for test all field
-    //actions.mod_src_ip.a.ipv4_addr = rte_cpu_to_be_32(((192<<24) + (168<<16) + (1<<8) + 1));
-    //actions.mod_dst_port = rte_cpu_to_be_16(0x1234); 
-    //actions.mod_src_port = rte_cpu_to_be_16(0x4321);
-    //TODO: add context
-    monitor.flags |= DOCA_GW_METER;
-    monitor.m.cir = 100 * 1000 / 8;// 100k
-    monitor.m.cbs = monitor.m.cir / 8;
     return doca_flow_pipeline_add_entry(0, pipeline, &match, &actions, &monitor,
                                       sw_rss_fwd_tbl_port[pinfo->orig_port_id], &err);
 }

@@ -5,9 +5,6 @@ struct doca_flow_pipeline_entry {
 	LIST_ENTRY(doca_flow_pipeline_entry) next;
     int id;
     void *pipe_entry;
-    uint32_t meter_id;
-	uint32_t meter_policy_id;
-    uint32_t meter_profile_id;
 };
 
 #define TMP_BUFF 128

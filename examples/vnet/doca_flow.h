@@ -180,6 +180,7 @@ struct doca_flow_monitor {
         uint32_t id;
         uint64_t cir;
         uint64_t cbs;
+		struct doca_flow_fwd_table_cfg fwd;
     } m;
 
     struct mirror {

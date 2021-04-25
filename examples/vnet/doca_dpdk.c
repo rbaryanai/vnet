@@ -682,7 +682,7 @@ static void doca_dpdk_build_dec_ttl_action(struct doca_dpdk_action_entry *entry)
 	action->conf = NULL;
 }
 
-static int doca_dpdk_build_action(struct doca_flow_pipeline_cfg *cfg,
+static int doca_dpdk_build_modify_action(struct doca_flow_pipeline_cfg *cfg,
 					struct doca_dpdk_pipeline *pipe_flow)
 {
 #define NEXT_ACTION (&pipe_flow->action_entry[idx++])
@@ -788,50 +788,8 @@ doca_dpdk_create_meter_profile(uint16_t port_id, uint32_t id, struct doca_flow_m
 	return 0;
 }
 
-static int
-doca_dpdk_create_meter_policy(uint16_t port_id, uint32_t policy_id,
-						struct doca_flow_fwd_table_cfg *fwd_cfg)
-{
-	int ret;
-	struct rte_mtr_error error;
-	struct rte_flow_action_rss conf;
-	struct rte_flow_action g_actions[2], r_actions[2];
-	const struct rte_flow_action *actions[RTE_COLORS];
+static int doca_dpdk_create_meter_rule(int port_id, uint32_t profile_id, uint32_t meter_id)
 
-	if (fwd_cfg->type != DOCA_FWD_RSS) {
-		DOCA_LOG_ERR("unsupport fwd type:%d\n", fwd_cfg->type);
-		return -1;
-	}
-	memset(&conf, 0x0, sizeof(conf));
-	conf.queue_num = fwd_cfg->rss.num_queues;
-	conf.func = RTE_ETH_HASH_FUNCTION_DEFAULT;
-	conf.types = doca_gw_get_rss_type(fwd_cfg->rss.rss_flags);
-	conf.queue = fwd_cfg->rss.queues;
-	g_actions[0].type = RTE_FLOW_ACTION_TYPE_RSS;
-	g_actions[0].conf = &conf;
-	g_actions[1].type = RTE_FLOW_ACTION_TYPE_END;
-	g_actions[1].conf = NULL;
-
-	r_actions[0].type = RTE_FLOW_ACTION_TYPE_DROP;
-	r_actions[0].conf = NULL;
-	r_actions[1].type = RTE_FLOW_ACTION_TYPE_END;
-	r_actions[1].conf = NULL;
-
-	actions[0] = &g_actions[0];
-	actions[1] = NULL;
-	actions[2] = &r_actions[0];
-
-	ret = rte_mtr_meter_policy_create(port_id, policy_id, actions, &error);
-	if (ret) {
-		printf("meter add failed port_id  %d\n", port_id);
-		return -1;
-	}
-	return 0;
-}
-
-static int
-doca_dpdk_create_meter_rule(int port_id, uint32_t meter_id,
-					struct doca_flow_pipeline_entry *pipe_entry)
 {
 	int ret;
 	struct rte_mtr_params params;
@@ -842,79 +800,115 @@ doca_dpdk_create_meter_rule(int port_id, uint32_t meter_id,
 	params.stats_mask = 0xffff;
 	params.use_prev_mtr_color = 0;
 	params.dscp_table = NULL;
-
-	/*create meter*/
-	params.meter_profile_id = pipe_entry->meter_profile_id;
-	params.meter_policy_id = pipe_entry->meter_policy_id;
-
+	params.meter_profile_id = profile_id;
+	params.meter_policy_id = meter_id;
 	ret = rte_mtr_create(port_id, meter_id, &params, 0, &error);
 	if (ret != 0) {
 		DOCA_LOG_ERR("Port %u create meter idx(%d) error(%d) message: %s\n",
 			port_id, meter_id, error.type,
 			error.message ? error.message : "(no stated reason)");
-		return 0;
+		return -1;
 	}
-	return meter_id++;
-}
-
-static int 
-doca_dpdk_build_meter_action(struct doca_flow_pipeline_entry *pipe_entry,
-							uint16_t port_id,
-							struct doca_dpdk_action_entry *entry, 
-							struct doca_flow_monitor *mon,
-							struct doca_flow_fwd_table_cfg *cfg)
-{
-	int ret;
-	struct rte_flow_action *action = entry->action;
-	struct rte_flow_action_meter *meter_conf;
-	struct doca_dpdk_action_meter_data *meter_data;
-	//uint32_t id = doca_id_pool_alloc_id(doca_gw_engine.meter_pool);  1 - 4096 
-	static uint32_t id = 0;
-
-	id++;
-	if (id <= 0) {
-		//TODO should be better handled
-		DOCA_LOG_ERR("out of meter profile ids");
-		return 0;
-	}
-
-	meter_data = &entry->action_data.meter;
-	ret = doca_dpdk_create_meter_profile(port_id, id, mon);
-	if (ret < 0)
-		return -1;
-	ret = doca_dpdk_create_meter_policy(port_id, id, cfg);
-	if (ret < 0)
-		return -1;
-	meter_data->policy_id = id;
-	meter_data->prof_id = id;
-	pipe_entry->meter_profile_id = meter_data->prof_id;
-	pipe_entry->meter_policy_id = meter_data->policy_id;
-	meter_conf = &meter_data->conf;
-	ret = doca_dpdk_create_meter_rule(port_id, id, pipe_entry);
-	if (ret < 0)
-		return -1;
-	pipe_entry->meter_id = id;
-	meter_conf->mtr_id = id;
-	action->type = RTE_FLOW_ACTION_TYPE_METER;
-	action->conf = meter_conf;
 	return 0;
 }
 
 static int
-doca_dpdk_build_monitor_action(struct doca_flow_pipeline_entry *pipe_entry,
-						struct doca_dpdk_pipeline *pipe, 
-						struct doca_flow_monitor *mon,
-						struct doca_flow_fwd_table_cfg *cfg)
+doca_dpdk_create_meter_policy(uint16_t port_id, uint32_t policy_id, struct doca_flow_monitor *mon)
 {
-	uint16_t port_id = pipe->port_id;
+	int ret;
+	struct rte_mtr_error error;
+	struct rte_flow_action_rss conf;
+	struct doca_fwd_table_cfg *fwd = &mon->m.fwd;
+	struct rte_flow_action g_actions[2], r_actions[2];
+	struct rte_mtr_meter_policy_params params;
+	//const struct rte_flow_action *actions[RTE_COLORS];
+
+	if (fwd->type != DOCA_FWD_RSS) {
+		DOCA_LOG_ERR("unsupport fwd type:%d\n", fwd->type);
+		return -1;
+	}
+	memset(&conf, 0x0, sizeof(conf));
+	conf.queue_num = fwd->rss.num_queues;
+	conf.func = RTE_ETH_HASH_FUNCTION_DEFAULT;
+	conf.types = doca_dpdk_get_rss_type(fwd->rss.rss_flags);
+	conf.queue = fwd->rss.queues;
+	g_actions[0].type = RTE_FLOW_ACTION_TYPE_RSS;
+	g_actions[0].conf = &conf;
+	g_actions[1].type = RTE_FLOW_ACTION_TYPE_END;
+	g_actions[1].conf = NULL;
+	
+	r_actions[0].type = RTE_FLOW_ACTION_TYPE_DROP;
+	r_actions[0].conf = NULL;
+	r_actions[1].type = RTE_FLOW_ACTION_TYPE_END;
+	r_actions[1].conf = NULL;
+
+	params.actions[0] = &g_actions[0];
+	params.actions[1] = NULL;
+	params.actions[2] = &r_actions[0];
+	
+	ret = rte_mtr_meter_policy_add(port_id, policy_id, &params, &error);
+	if (ret) {
+		DOCA_LOG_ERR("Port %u create policy idx(%d) error(%d) message: %s\n",
+			port_id, policy_id, error.type,
+			error.message ? error.message : "(no stated reason)");
+		return -1;
+	}
+	return 0;
+}
+
+static int doca_dpdk_build_meter_rule(struct doca_pipeline_cfg *cfg,
+					struct doca_dpdk_pipeline *pipeline)
+{
+	int ret;
+	uint32_t id = doca_id_pool_alloc_id(doca_dpdk_engine.meter_pool);
+
+	if (id <= 0) {
+		DOCA_LOG_ERR("out of meter profile ids");
+		return 0;
+	}
+	ret = doca_dpdk_create_meter_profile(pipeline->port_id, id, cfg->monitor);
+	if (ret < 0)
+		return -1;
+
+	ret = doca_dpdk_create_meter_policy(pipeline->port_id, id, cfg->monitor);
+	if (ret < 0)
+		return -1;	
+	ret = doca_dpdk_create_meter_rule(pipeline->port_id, id, id);
+	if (ret < 0)
+		return -1;
+	pipeline->meter_id = id;
+	DOCA_LOG_DBG("create meter id:%d success", id);
+	return 0;
+}
+
+static void doca_dpdk_build_meter_action(struct doca_dpdk_pipeline *pipe)
+{
+	struct doca_dpdk_action_entry *entry;
+	struct doca_dpdk_action_meter_data *meter_data;
+
+	entry = &pipe->action_entry[pipe->nb_actions_entry++];
+	meter_data = &entry->action_data.meter;
+	meter_data->conf.mtr_id = pipe->meter_id;
+	entry->action->type = RTE_FLOW_ACTION_TYPE_METER;
+	entry->action->conf = &meter_data->conf;
+}
+
+static void doca_dpdk_build_counter_action(struct doca_dpdk_pipeline *pipe)
+{
 	struct doca_dpdk_action_entry *entry;
 
-	if (mon->flags & DOCA_GW_METER) {
-		entry = &pipe->action_entry[pipe->nb_actions_entry++];
-		if (doca_dpdk_build_meter_action(pipe_entry, port_id, entry, mon, cfg))
-			return -1;
+	entry = &pipe->action_entry[pipe->nb_actions_entry++];
+	entry->action->type = RTE_FLOW_ACTION_TYPE_COUNT;
+	entry->action->conf = NULL;	
+}
+
+static int doca_dpdk_build_monitor_action(struct doca_dpdk_pipeline *pipe,
+	struct doca_flow_monitor *mon)
+{
+
+	if (mon->flags & DOCA_GW_COUNT) {
+		doca_dpdk_build_counter_action(pipe, pipe->meter_id);
 	}
-	//todo:  count/aging...
 	return 0;
 }
 
@@ -1046,15 +1040,17 @@ doca_dpdk_pipe_create_entry_flow(struct doca_flow_pipeline_entry *entry, struct 
 		DOCA_LOG_ERR("modify pipe action fail.\n");
 		return NULL;
 	}
-	if (mon->flags != DOCA_GW_NONE
-		&& doca_dpdk_build_monitor_action(entry, pipe, mon)) {
+	if (mon->flags != DOCA_GW_NONE &&
+	    doca_dpdk_build_monitor_action(pipe, mon)) {
 		DOCA_LOG_ERR("create monitor action fail.\n");
 		return NULL;
 	}
-	if (!(mon->flags & DOCA_GW_METER) && doca_dpdk_build_fwd(pipe, cfg)) {
+	if (!pipe->meter_id && doca_dpdk_build_fwd(pipe, cfg)) {
 		DOCA_LOG_ERR("build pipe fwd action fail.");
 		return NULL;
 	}
+	if (pipe->meter_id)
+	    doca_dpdk_build_meter_action(pipe);
 	doca_dpdk_build_end_action(pipe);
 	return doca_dpdk_create_flow(pipe->port_id, &pipe->attr, pipe->items, pipe->actions);
 }
@@ -1102,33 +1098,6 @@ int doca_dpdk_pipe_free_entry(uint16_t portid, struct doca_flow_pipeline_entry *
 			portid, flow_err.type, flow_err.message ? flow_err.message : "(no stated reason)");
 		return -1;
 	}
-	if (entry->meter_id) {
-		ret = rte_mtr_destroy(portid, entry->meter_id, &mtr_err);
-		if (ret) {
-			DOCA_LOG_ERR("Port %u free meter rule id %u err, type %d message: %s",
-				portid, entry->meter_id, mtr_err.type,
-				mtr_err.message ? mtr_err.message : "(no stated reason)");
-			return -1;
-		}
-	}	
-	if (entry->meter_policy_id) {
-		ret = rte_mtr_meter_policy_delete(portid, entry->meter_policy_id, &mtr_err);
-		if (ret) {
-			DOCA_LOG_ERR("Port %u free meter policy id %u err, type %d message: %s",
-				portid, entry->meter_policy_id, mtr_err.type,
-				mtr_err.message ? mtr_err.message : "(no stated reason)");
-			return -1;
-		}
-	}
-	if (entry->meter_profile_id) {
-		ret = rte_mtr_meter_profile_delete(portid, entry->meter_profile_id, &mtr_err);
-		if (ret) {
-			DOCA_LOG_ERR("Port %u free meter profile id %u err, type %d message: %s",
-				portid, entry->meter_profile_id, mtr_err.type,
-				mtr_err.message ? mtr_err.message : "(no stated reason)");
-			return -1;
-		}
-	}
 	return 0;
 }
 /*todo , how to manager root/queue flows for one port.*/
@@ -1168,10 +1137,17 @@ doca_dpdk_create_pipe_flow(struct doca_dpdk_pipeline *flow,
 		err->type = DOCA_ERROR_PIPE_BUILD_IMTE_ERROR;
 		return -1;
 	}
-	ret = doca_dpdk_build_action(cfg, flow);
+	ret = doca_dpdk_build_modify_action(cfg, flow);
 	if (ret) {
 		err->type = DOCA_ERROR_PIPE_BUILD_ACTION_ERROR;
 		return -1;
+	}
+	if (cfg->monitor && (cfg->monitor->flags && DOCA_GW_METER)) {
+		ret = doca_dpdk_build_meter_rule(cfg, flow);
+		if (ret) {
+			err->type = DOCA_ERROR_PIPE_BUILD_ACTION_ERROR;
+			return -1;
+		}
 	}
 	doca_dump_rte_flow("create pipe:", flow->port_id, &flow->attr,
 		flow->items, flow->actions);
@@ -1274,6 +1250,13 @@ static void doca_dpdk_free_pipe(uint16_t portid, struct doca_flow_pipeline *pipe
 		nb_pipe_entry++;
 		doca_dpdk_pipe_free_entry(portid, entry);
 		free(entry);		
+	}
+	if (pipe->flow->meter_id) {/*all flows delete, destroy meter rule*/
+		struct rte_mtr_error mtr_err;
+		uint32_t id = pipe->flow->meter_id;
+		rte_mtr_destroy(portid, id, &mtr_err);
+		rte_mtr_meter_policy_delete(portid, id, &mtr_err);
+		rte_mtr_meter_profile_delete(portid, id, &mtr_err);
 	}
 	rte_spinlock_unlock(&pipe->entry_lock);
 	free(pipe);
