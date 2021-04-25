@@ -42,7 +42,7 @@ int gw_parse_pkt_str(struct doca_pkt_info *pinfo, char *str, int len);
  *
  * @return 
  */
-struct doca_gw_pipeline *gw_init_ol_to_ul_pipeline(struct doca_gw_port *p);
+struct doca_gw_pipeline *gw_init_ol_to_ul_pipeline(struct doca_flow_port *p);
 
 /**
  * @brief - overlay to overlay pipeline
@@ -64,7 +64,7 @@ struct doca_gw_pipeline *gw_init_ol_to_ul_pipeline(struct doca_gw_port *p);
  *
  * @return 
  */
-struct doca_gw_pipeline *gw_init_ol_to_ol_pipeline(struct doca_gw_port *p);
+struct doca_gw_pipeline *gw_init_ol_to_ol_pipeline(struct doca_flow_port *p);
 
 
 
@@ -75,7 +75,7 @@ struct doca_gw_pipeline *gw_init_ol_to_ol_pipeline(struct doca_gw_port *p);
  *
  * @return 
  */
-struct doca_gw_port *gw_init_doca_port(struct gw_port_cfg *port_cfg);
+struct doca_flow_port *gw_init_doca_port(struct gw_port_cfg *port_cfg);
 
 enum gw_classification {
     GW_CLS_OL_TO_UL,

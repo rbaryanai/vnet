@@ -43,7 +43,7 @@
 #include <stdbool.h>
 #include "doca_net.h"
 
-struct doca_gw_port;
+struct doca_flow_port;
 struct doca_gw_pipeline; 
 struct doca_gw_pipelne_entry;
 
@@ -56,7 +56,7 @@ enum doca_gw_modify_flags {
  * @brief :
  *    API calls failure reasons
  */
-enum doca_gw_error_type {
+enum doca_flow_error_type {
     DOCA_ERROR_UNKNOWN,
     DOCA_ERROR_UNSUPPORTED,
     DOCA_ERROR_TABLE_IS_FULL,
@@ -71,8 +71,8 @@ enum doca_gw_error_type {
  *  in case of an error, error type and a description of the error
  *  is provided.
  */
-struct doca_gw_error {
-    enum doca_gw_error_type type;
+struct doca_flow_error {
+    enum doca_flow_error_type type;
     const char *message;
 };
 
@@ -80,20 +80,20 @@ struct doca_gw_error {
 /**
  * @brief - GW global configurations
  */
-struct doca_gw_cfg {
+struct doca_flow_cfg {
     uint32_t total_sessions;
     uint16_t queues; /* each offload thread should use a different queue id */
     bool     aging;  /* when true, aging is handled by doca */
 };
 
-enum doca_gw_port_type {
+enum doca_flow_port_type {
     DOCA_GW_PORT_DPDK,
     DOCA_GW_PORT_DPDK_BY_ID,
 };
 
-struct doca_gw_port_cfg {
+struct doca_flow_port_cfg {
 	uint16_t port_id;
-    enum doca_gw_port_type type;   /* mapping type of port */
+    enum doca_flow_port_type type;   /* mapping type of port */
     uint16_t queues;                
     const char *devargs;           /* specific per port type cfg */
     uint16_t priv_data_size;       /* user private data */
@@ -106,7 +106,7 @@ struct doca_gw_port_cfg {
  *   - used for adding entry
  *     - only changeable fields are needed
  */
-struct doca_gw_match {
+struct doca_flow_match {
 
     uint8_t  out_src_mac[DOCA_ETHER_ADDR_LEN];
     uint8_t  out_dst_mac[DOCA_ETHER_ADDR_LEN];
@@ -145,7 +145,7 @@ struct doca_gw_encap_action {
  *    - used for defintion per pipeline
  *    - used when adding entries for a pipeline 
  */
-struct doca_gw_actions {
+struct doca_flow_actions {
 
     uint8_t flags;          
     bool decap;
@@ -173,7 +173,7 @@ enum {
 	DOCA_GW_AGING = (1 << 3),
 };
 
-struct doca_gw_monitor {
+struct doca_flow_monitor {
     uint8_t flags;
     bool count;
     struct meter {
@@ -194,10 +194,10 @@ struct doca_gw_monitor {
  */
 struct doca_gw_pipeline_cfg {
     const char *name;
-    struct doca_gw_port     *port;
-    struct doca_gw_match    *match;
-    struct doca_gw_actions  *actions;
-    struct doca_gw_monitor  *monitor;
+    struct doca_flow_port     *port;
+    struct doca_flow_match    *match;
+    struct doca_flow_actions  *actions;
+    struct doca_flow_monitor  *monitor;
     bool                    count;    /* count for entire pipe */
 };
 
@@ -255,7 +255,7 @@ struct doca_fwd_tbl *doca_gw_create_fwd_tbl(struct doca_fwd_table_cfg *cfg);
  *
  * @return 
  */
-int doca_gw_init(struct doca_gw_cfg *cfg, struct doca_gw_error *err);
+int doca_gw_init(struct doca_flow_cfg *cfg, struct doca_flow_error *err);
 
 
 /**
@@ -267,7 +267,7 @@ int doca_gw_init(struct doca_gw_cfg *cfg, struct doca_gw_error *err);
  *
  * @return port instance on success
  */
-struct doca_gw_port *doca_gw_port_start(struct doca_gw_port_cfg *cfg, struct doca_gw_error *err);
+struct doca_flow_port *doca_flow_port_start(struct doca_flow_port_cfg *cfg, struct doca_flow_error *err);
 
 /**
  * @brief - close port
@@ -277,7 +277,7 @@ struct doca_gw_port *doca_gw_port_start(struct doca_gw_port_cfg *cfg, struct doc
  *
  * @return 
  */
-int doca_gw_port_stop(struct doca_gw_port *port);
+int doca_flow_port_stop(struct doca_flow_port *port);
 
 
 /**
@@ -289,7 +289,7 @@ int doca_gw_port_stop(struct doca_gw_port *port);
  *
  * @return 
  */
-uint8_t *doca_gw_port_priv_data(struct doca_gw_port *p);
+uint8_t *doca_flow_port_priv_data(struct doca_flow_port *p);
 
 
 /**
@@ -300,7 +300,7 @@ uint8_t *doca_gw_port_priv_data(struct doca_gw_port *p);
  *
  * @return pipeline handler or NULL on failure
  */
-struct doca_gw_pipeline *doca_gw_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_gw_error *err);
+struct doca_gw_pipeline *doca_gw_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_flow_error *err);
 
 /**
  * @brief 
@@ -316,9 +316,9 @@ struct doca_gw_pipeline *doca_gw_create_pipe(struct doca_gw_pipeline_cfg *cfg, s
  * @return entry ref on success and NULL otherwise with reason filled in err.
  */
 struct doca_gw_pipelne_entry *doca_gw_pipeline_add_entry(uint16_t pipe_queue, 
-                      struct doca_gw_pipeline *pipeline, struct doca_gw_match *match,
-                      struct doca_gw_actions *actions,struct doca_gw_monitor *mod,
-                      struct doca_fwd_tbl *fwd, struct doca_gw_error *err);
+                      struct doca_gw_pipeline *pipeline, struct doca_flow_match *match,
+                      struct doca_flow_actions *actions,struct doca_flow_monitor *mod,
+                      struct doca_fwd_tbl *fwd, struct doca_flow_error *err);
 
 /**
  * @brief - default pipeline is match all, and send to SW.
@@ -334,8 +334,8 @@ struct doca_gw_pipelne_entry *doca_gw_pipeline_add_entry(uint16_t pipe_queue,
  *
  * @return 0 on success and error reason for other
  */
-int doca_gw_pipeline_update_default(uint16_t pipe_queue, struct doca_gw_port *port,
-                                    struct doca_fwd_tbl *fwd, struct doca_gw_error *err);
+int doca_gw_pipeline_update_default(uint16_t pipe_queue, struct doca_flow_port *port,
+                                    struct doca_fwd_tbl *fwd, struct doca_flow_error *err);
 
 /**
  * @brief 
