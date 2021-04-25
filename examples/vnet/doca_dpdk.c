@@ -683,7 +683,7 @@ static void doca_gw_dpdk_build_dec_ttl_action(struct doca_dpdk_action_entry *ent
 }
 
 static int doca_gw_dpdk_build_action(struct doca_flow_pipeline_cfg *cfg,
-					struct doca_gw_pipe_dpdk_flow *pipe_flow)
+					struct doca_dpdk_pipeline *pipe_flow)
 {
 #define NEXT_ACTION (&pipe_flow->action_entry[idx++])
 	int ret = 0;
@@ -711,7 +711,7 @@ static int doca_gw_dpdk_build_action(struct doca_flow_pipeline_cfg *cfg,
 	return ret;
 }
 
-static void doca_gw_dpdk_build_end_action(struct doca_gw_pipe_dpdk_flow *pipe)
+static void doca_gw_dpdk_build_end_action(struct doca_dpdk_pipeline *pipe)
 {
 	struct rte_flow_action *action = &pipe->actions[pipe->nb_actions_entry++];
 	action->type = RTE_FLOW_ACTION_TYPE_END;
@@ -749,7 +749,7 @@ doca_gw_dpdk_build_rss_action(struct doca_dpdk_action_entry *entry,
 	return 0;
 }
 
-static int doca_gw_dpdk_build_fwd(struct doca_gw_pipe_dpdk_flow *pipe,
+static int doca_gw_dpdk_build_fwd(struct doca_dpdk_pipeline *pipe,
 									struct doca_fwd_table_cfg *fwd_cfg)
 {
 	struct doca_dpdk_action_entry *action_entry;
@@ -902,7 +902,7 @@ doca_gw_dpdk_build_meter_action(struct doca_flow_pipeline_entry *pipe_entry,
 
 static int
 doca_gw_dpdk_build_monitor_action(struct doca_flow_pipeline_entry *pipe_entry,
-						struct doca_gw_pipe_dpdk_flow *pipe, 
+						struct doca_dpdk_pipeline *pipe, 
 						struct doca_flow_monitor *mon,
 						struct doca_fwd_table_cfg *cfg)
 {
@@ -919,7 +919,7 @@ doca_gw_dpdk_build_monitor_action(struct doca_flow_pipeline_entry *pipe_entry,
 }
 
 static int
-doca_gw_dpdk_modify_pipe_match(struct doca_gw_pipe_dpdk_flow *pipe,
+doca_gw_dpdk_modify_pipe_match(struct doca_dpdk_pipeline *pipe,
 	struct doca_flow_match *match)
 {
 	int idex, ret;
@@ -937,7 +937,7 @@ doca_gw_dpdk_modify_pipe_match(struct doca_gw_pipe_dpdk_flow *pipe,
 }
 
 static int
-doca_gw_dpdk_modify_pipe_actions(struct doca_gw_pipe_dpdk_flow *pipe,
+doca_gw_dpdk_modify_pipe_actions(struct doca_dpdk_pipeline *pipe,
 	struct doca_flow_actions *actions)
 {
 	int idex, ret;
@@ -1027,7 +1027,7 @@ doca_gw_dpdk_create_def_rss(uint16_t port_id)
 
 
 static struct rte_flow *
-doca_gw_dpdk_pipe_create_entry_flow(struct doca_flow_pipeline_entry *entry, struct doca_gw_pipe_dpdk_flow *pipe,
+doca_gw_dpdk_pipe_create_entry_flow(struct doca_flow_pipeline_entry *entry, struct doca_dpdk_pipeline *pipe,
 					struct doca_flow_match *match, struct doca_flow_actions *actions,
 					struct doca_flow_monitor *mon, struct doca_fwd_table_cfg *cfg,
 					__rte_unused struct doca_flow_error *err)
@@ -1154,7 +1154,7 @@ doca_gw_dpdk_init_port(uint16_t port_id)
  * @return 
  */
 static int
-doca_gw_dpdk_create_pipe_flow(struct doca_gw_pipe_dpdk_flow *flow, 
+doca_gw_dpdk_create_pipe_flow(struct doca_dpdk_pipeline *flow, 
 							struct doca_flow_pipeline_cfg *cfg,
 							struct doca_flow_error *err)
 {
@@ -1185,7 +1185,7 @@ doca_gw_dpdk_create_pipe(struct doca_flow_pipeline_cfg *cfg, struct doca_gw_erro
 	uint32_t idx;
 	static uint32_t pipe_id = 1;
 	struct doca_flow_pipeline *pl;
-	struct doca_gw_pipe_dpdk_flow *flow;
+	struct doca_dpdk_pipeline *flow;
 
 	DOCA_LOG_DBG("port:%u create pipe:%s\n", cfg->port->port_id, cfg->name);
 	doca_dump_gw_match(cfg->match);

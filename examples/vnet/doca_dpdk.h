@@ -77,7 +77,7 @@ struct doca_dpdk_item_tcp_data {
 	struct rte_flow_item_tcp mask;
 };
 
-struct doca_gw_item_data {
+struct doca_dpdk_item_data {
 	union {
 		struct doca_dpdk_item_eth_data eth;
 		struct doca_dpdk_item_vlan_data vlan;
@@ -94,7 +94,7 @@ struct doca_gw_item_data {
 struct doca_dpdk_item_entry {
 	uint8_t flags;
 	struct rte_flow_item *item;
-	struct doca_gw_item_data item_data;
+	struct doca_dpdk_item_data item_data;
 	int (*modify_item)(struct doca_dpdk_item_entry*, struct doca_flow_match*);
 };
 
@@ -139,7 +139,7 @@ struct doca_dpdk_action_l4_port_data {
 	struct rte_flow_action_set_tp l4port;
 };
 
-struct rte_flow_action_data {
+struct doca_dpdk_action_data {
 	union {
 		struct doca_dpdk_action_jump_data jump;
 		struct doca_dpdk_action_mac_data mac; //include src/dst
@@ -154,11 +154,11 @@ struct rte_flow_action_data {
 
 struct doca_dpdk_action_entry {
 	struct rte_flow_action *action;
-	struct rte_flow_action_data action_data;
+	struct doca_dpdk_action_data action_data;
 	int (*modify_action)(struct doca_dpdk_action_entry*, struct doca_flow_actions*);
 };
 
-struct doca_gw_pipe_dpdk_flow {
+struct doca_dpdk_pipeline {
 	uint16_t port_id;
 	uint8_t nb_items;
 	uint8_t nb_actions_pipe;
@@ -168,12 +168,12 @@ struct doca_gw_pipe_dpdk_flow {
 	struct doca_dpdk_item_entry item_entry[MAX_ITEMS];
 	struct rte_flow_action actions[MAX_ACTIONS];
 	struct doca_dpdk_action_entry action_entry[MAX_ACTIONS];
-	LIST_ENTRY(doca_gw_pipe_dpdk_flow) free_list;
+	LIST_ENTRY(doca_dpdk_pipeline) free_list;
 };
 
-struct doca_gw_pipe_dpdk_flow_list {
-	struct doca_gw_pipe_dpdk_flow pipe_flows[MAX_PIP_FLOWS];
-	LIST_HEAD(, doca_gw_pipe_dpdk_flow) free_head;
+struct doca_dpdk_pipeline_list {
+	struct doca_dpdk_pipeline pipe_flows[MAX_PIP_FLOWS];
+	LIST_HEAD(, doca_dpdk_pipeline) free_head;
 };
 
 struct endecap_layer {

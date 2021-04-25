@@ -18,7 +18,7 @@ struct doca_flow_pipeline {
 	uint32_t id;
 	uint32_t pipe_entry_id;
 	uint32_t nb_pipe_entrys;
-	struct doca_gw_pipe_dpdk_flow flow;
+	struct doca_dpdk_pipeline flow;
 	rte_spinlock_t entry_lock;
 	LIST_HEAD(, doca_flow_pipeline_entry) entry_list;
 };
