@@ -230,7 +230,7 @@ struct doca_fwd_table_cfg {
     };
 };
 
-struct doca_gw_query {
+struct doca_flow_query {
     uint64_t total_bytes;
     uint64_t total_pkts;
     uint32_t last_used;  /* in seconds */
@@ -255,7 +255,7 @@ struct doca_fwd_tbl *doca_gw_create_fwd_tbl(struct doca_fwd_table_cfg *cfg);
  *
  * @return 
  */
-int doca_gw_init(struct doca_flow_cfg *cfg, struct doca_flow_error *err);
+int doca_flow_init(struct doca_flow_cfg *cfg, struct doca_flow_error *err);
 
 
 /**
@@ -300,7 +300,7 @@ uint8_t *doca_flow_port_priv_data(struct doca_flow_port *p);
  *
  * @return pipeline handler or NULL on failure
  */
-struct doca_gw_pipeline *doca_gw_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_flow_error *err);
+struct doca_flow_pipeline *doca_gw_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_flow_error *err);
 
 /**
  * @brief 
@@ -334,7 +334,7 @@ struct doca_flow_pipeline_entry *doca_flow_pipeline_add_entry(uint16_t pipe_queu
  *
  * @return 0 on success and error reason for other
  */
-int doca_gw_pipeline_update_default(uint16_t pipe_queue, struct doca_flow_port *port,
+int doca_flow_pipeline_update_default(uint16_t pipe_queue, struct doca_flow_port *port,
                                     struct doca_fwd_tbl *fwd, struct doca_flow_error *err);
 
 /**
@@ -344,7 +344,7 @@ int doca_gw_pipeline_update_default(uint16_t pipe_queue, struct doca_flow_port *
  *
  * @return 
  */
-int doca_gw_rm_entry(uint16_t pipe_queue, struct doca_flow_pipeline_entry *entry);
+int doca_flow_rm_entry(uint16_t pipe_queue, struct doca_flow_pipeline_entry *entry);
 
 
 /**
@@ -355,7 +355,7 @@ int doca_gw_rm_entry(uint16_t pipe_queue, struct doca_flow_pipeline_entry *entry
  *
  * @return 0 on success
  */
-int doca_gw_query(struct doca_flow_pipeline_entry *pe, struct doca_gw_query *q);
+int doca_flow_query(struct doca_flow_pipeline_entry *pe, struct doca_gw_query *q);
 
 
 
@@ -370,8 +370,8 @@ int doca_gw_query(struct doca_flow_pipeline_entry *pe, struct doca_gw_query *q);
  *
  * @return true if there are more waiting entries for aging.
  */
-bool doca_gw_query_aging(struct doca_flow_pipeline_entry *arr, int arr_len, int *n);
+bool doca_flow_query_aging(struct doca_flow_pipeline_entry *arr, int arr_len, int *n);
 
-void doca_gw_destroy(uint16_t port_id);
-void doca_gw_dump_pipeline(uint16_t port_id);
+void doca_flow_destroy(uint16_t port_id);
+void doca_flow_dump_pipeline(uint16_t port_id);
 #endif

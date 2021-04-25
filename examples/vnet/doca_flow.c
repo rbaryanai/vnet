@@ -1,13 +1,13 @@
-#include "doca_gw.h"
+#include "doca_flow.h"
 #include "gw.h"
 #include "doca_log.h"
-#include "doca_gw_dpdk.h"
+#include "doca_dpdk.h"
 #include "doca_dpdk_priv.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-DOCA_LOG_MODULE(doca_gw);
+DOCA_LOG_MODULE(doca_flow);
 
 struct doca_fwd_tbl {
     const char * name;
@@ -21,13 +21,13 @@ uint8_t *doca_flow_port_priv_data(struct doca_flow_port *p)
     return &p->user_data[0];
 }
 
-int doca_gw_init(struct doca_flow_cfg *cfg,struct doca_flow_error *err)
+int doca_flow_init(struct doca_flow_cfg *cfg,struct doca_flow_error *err)
 {
     DOCA_LOG_INFO("total sessions = %d\n",cfg->total_sessions);
     if (err) {
         *err = *err;
     }
-    doca_gw_init_dpdk(cfg);
+    doca_dpdk_init(cfg);
     return 0;
 }
 
@@ -47,14 +47,14 @@ struct doca_flow_pipeline_entry *doca_flow_pipeline_add_entry(uint16_t pipe_queu
     if(pipeline == NULL || match == NULL || actions == NULL || mon == NULL)
         return NULL;
 	pipe_queue = pipe_queue;
-	return doca_gw_dpdk_pipe_create_flow(pipeline, match, actions, mon, &fwd->cfg, err);
+	return doca_dpdk_pipe_create_flow(pipeline, match, actions, mon, &fwd->cfg, err);
 }
 
-int doca_gw_rm_entry(uint16_t pipe_queue, struct doca_flow_pipeline_entry *entry)
+int doca_flow_rm_entry(uint16_t pipe_queue, struct doca_flow_pipeline_entry *entry)
 {
     DOCA_LOG_INFO("(pipe %d) HW release id%d",pipe_queue, entry->id);
 	// TODO: how to get the port id?
-	//doca_gw_dpdk_free_flow(0, entry->pipe_entry);
+	//doca_dpdk_free_flow(0, entry->pipe_entry);
     free(entry);
     return 0;
 }
@@ -82,7 +82,7 @@ struct doca_flow_port * doca_flow_port_start(struct doca_flow_port_cfg *cfg, str
 		//TODO: need to parse devargs
 		DOCA_LOG_INFO("new doca port type:dpdk port id:%s", cfg->devargs);
 		cfg->port_id = atoi(cfg->devargs);
-		port = doca_gw_dpdk_port_start(cfg, err);
+		port = doca_flow_dpdk_port_start(cfg, err);
 		break;
 	default:
 		DOCA_LOG_ERR("unsupported port type");
@@ -108,24 +108,24 @@ int doca_flow_port_stop(struct doca_flow_port *port)
     return 0;
 }
 
-struct doca_gw_pipeline *doca_gw_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_flow_error *err)
+struct doca_flow_pipeline *doca_flow_create_pipe(struct doca_flow_pipeline_cfg *cfg, struct doca_flow_error *err)
 {
 	if (cfg == NULL)
 		return NULL;
-	return doca_gw_dpdk_create_pipe(cfg, err);
+	return doca_dpdk_create_pipe(cfg, err);
 }
 
-void doca_gw_destroy(uint16_t port_id)
+void doca_flow_destroy(uint16_t port_id)
 {
-	doca_gw_dpdk_destroy(port_id);
+	doca_dpdk_destroy(port_id);
 }
 
-void doca_gw_dump_pipeline(uint16_t port_id)
+void doca_flow_dump_pipeline(uint16_t port_id)
 {
-	doca_gw_dpdk_dump_pipeline(port_id);
+	doca_dpdk_dump_pipeline(port_id);
 }
 
-struct doca_fwd_tbl *doca_gw_create_fwd_tbl(struct doca_fwd_table_cfg *cfg)
+struct doca_fwd_tbl *doca_flow_create_fwd_tbl(struct doca_fwd_table_cfg *cfg)
 {
     static uint32_t fwd_id = 0;
     struct doca_fwd_tbl *tbl = malloc(sizeof(struct doca_fwd_tbl));
