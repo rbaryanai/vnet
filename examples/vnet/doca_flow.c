@@ -74,11 +74,11 @@ struct doca_flow_port * doca_flow_port_start(struct doca_flow_port_cfg *cfg, str
 	if (cfg == NULL)
 		return NULL;
 	switch(cfg->type) {
-	case DOCA_GW_PORT_DPDK:
+	case DOCA_FLOW_PORT_DPDK:
 		DOCA_LOG_INFO("port is dpdk, matching port id");
 		// init all required data sturcures for port.
 		break;
-	case DOCA_GW_PORT_DPDK_BY_ID:
+	case DOCA_FLOW_PORT_DPDK_BY_ID:
 		//TODO: need to parse devargs
 		DOCA_LOG_INFO("new doca port type:dpdk port id:%s", cfg->devargs);
 		cfg->port_id = atoi(cfg->devargs);

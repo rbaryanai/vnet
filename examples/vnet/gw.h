@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include "doca_gw.h"
+#include "doca_flow.h"
 #include "doca_pkt.h"
 
 struct gw_port_cfg {

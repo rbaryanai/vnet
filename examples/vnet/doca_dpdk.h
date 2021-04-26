@@ -1,9 +1,9 @@
-#ifndef _DOCA_GW_DPDK_H_
-#define _DOCA_GW_DPDK_H_
+#ifndef _DOCA_DPDK_H_
+#define _DOCA_DPDK_H_
 
 #include <stdio.h>
 #include <rte_flow.h>
-#include "doca_gw.h"
+#include "doca_flow.h"
 #include "doca_utils.h"
 
 #define INNER_MATCH		1
@@ -261,7 +261,7 @@ doca_match_is_ipv4(struct doca_flow_match *match, uint8_t type)
 }
 
 static inline rte_be16_t
-doca_gw_get_l3_protol(struct doca_flow_match *match, uint8_t type)
+doca_dpdk_get_l3_protol(struct doca_flow_match *match, uint8_t type)
 {
 	uint16_t protocol;
 	if (type == OUTER_MATCH && match->vlan_id)
@@ -286,25 +286,25 @@ static inline bool doca_match_is_udp(struct doca_flow_match *match)
 	return (match->in_l4_type == IPPROTO_UDP);
 }
 
-void doca_gw_init_dpdk(struct doca_flow_cfg *cfg);
+void doca_dpdk_init(struct doca_flow_cfg *cfg);
 
-struct doca_gw_pipeline*
-doca_gw_dpdk_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_flow_error *err);
+struct doca_flow_pipeline*
+doca_dpdk_create_pipe(struct doca_flow_pipeline_cfg *cfg, struct doca_flow_error *err);
 
 
 struct doca_flow_pipeline_entry*
-doca_gw_dpdk_pipe_create_flow(struct doca_flow_pipeline *pipeline,
+doca_dpdk_pipe_create_flow(struct doca_flow_pipeline *pipeline,
 					struct doca_flow_match *match, struct doca_flow_actions *actions,
 					struct doca_flow_monitor *mon, struct doca_flow_fwd_table_cfg *cfg,
 					struct doca_flow_error *err);
 
 
 
-int doca_gw_dpdk_init_port(uint16_t port_id);
-int doca_gw_dpdk_pipe_free_entry(uint16_t portid, struct doca_flow_pipeline_entry *entry);
+int doca_dpdk_init_port(uint16_t port_id);
+int doca_dpdk_pipe_free_entry(uint16_t portid, struct doca_flow_pipeline_entry *entry);
 
 struct doca_flow_port *
-doca_gw_dpdk_port_start(struct doca_flow_port_cfg *cfg, struct doca_flow_error *err);
-void doca_gw_dpdk_destroy(uint16_t port_id);
-void doca_gw_dpdk_dump_pipeline(uint16_t port_id);
+doca_dpdk_port_start(struct doca_flow_port_cfg *cfg, struct doca_flow_error *err);
+void doca_dpdk_destroy(uint16_t port_id);
+void doca_dpdk_dump_pipeline(uint16_t port_id);
 #endif

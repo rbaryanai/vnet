@@ -24,13 +24,13 @@ struct doca_dpdk_engine {
 };
 
 struct doca_dpdk_engine doca_dpdk_engine;
-#define DOCA_GW_MAX_PORTS (128)
-static struct doca_flow_port *doca_dpdk_used_portsts[DOCA_GW_MAX_PORTS];
+#define DOCA_FLOW_MAX_PORTS (128)
+static struct doca_flow_port *doca_dpdk_used_portsts[DOCA_FLOW_MAX_PORTS];
 
 void doca_dpdk_init(__rte_unused struct doca_flow_cfg *cfg)
 {
 	struct doca_id_pool_cfg pool_cfg = { .size = cfg->total_sessions, .min = 1 };
-	memset(&doca_dpdk_engine,0, sizeof(doca_gw_engine));
+	memset(&doca_dpdk_engine,0, sizeof(doca_dpdk_engine));
 	memset(doca_dpdk_used_portsts,0,sizeof(doca_dpdk_used_portsts));
 	doca_dpdk_engine.meter_pool = doca_id_pool_create(&pool_cfg);
 	doca_dpdk_engine.meter_profile_pool = doca_id_pool_create(&pool_cfg);
@@ -75,7 +75,7 @@ doca_dpdk_build_eth_flow_item(struct doca_dpdk_item_entry *entry,
 	}
 	if (match->vlan_id)
 		spec->has_vlan = 1;//will debug if this set is need.
-	spec->type = doca_gw_get_l3_protol(match, OUTER_MATCH);
+	spec->type = doca_dpdk_get_l3_protol(match, OUTER_MATCH);
 	mask->type = UINT16_MAX;
 	flow_item->spec = spec;
 	flow_item->mask = mask;
@@ -242,7 +242,7 @@ static void doca_dpdk_build_gre_flow_item(struct doca_dpdk_item_entry *entry,
 	struct rte_flow_item_gre *spec = &entry->item_data.gre.spec;
 
 	flow_item->type = RTE_FLOW_ITEM_TYPE_GRE;
-	spec->protocol = doca_gw_get_l3_protol(match, INNER_MATCH);
+	spec->protocol = doca_dpdk_get_l3_protol(match, INNER_MATCH);
 }
 
 static int
@@ -284,7 +284,7 @@ static void doca_dpdk_build_inner_eth_flow_item(struct doca_dpdk_item_entry *ent
 	struct rte_flow_item_eth *mask = &entry->item_data.eth.mask;
 
 	flow_item->type = RTE_FLOW_ITEM_TYPE_ETH;
-	spec->type = doca_gw_get_l3_protol(match, OUTER_MATCH);
+	spec->type = doca_dpdk_get_l3_protol(match, OUTER_MATCH);
 	mask->type = UINT16_MAX;
 	flow_item->spec = spec;
 	flow_item->mask = mask;
@@ -392,7 +392,7 @@ static void doca_dpdk_build_udp_flow_item(struct doca_dpdk_item_entry *entry,
 }
 
 static int doca_dpdk_build_item(struct doca_flow_match *match,
-					struct doca_gw_pipe_dpdk_flow *pipe_flow, struct doca_flow_error *err)
+					struct doca_dpdk_pipeline *pipe_flow, struct doca_flow_error *err)
 {
 #define NEXT_ITEM (&pipe_flow->item_entry[idx++]) //reduce line length
 	uint8_t idx = 0, type = OUTER_MATCH;
@@ -457,7 +457,7 @@ doca_dpdk_build_ether_header(uint8_t **header, struct doca_flow_pipeline_cfg *cf
 		rte_ether_addr_copy((const struct rte_ether_addr*)match->out_src_mac, &eth_hdr.s_addr);
 	if (!doca_is_mac_zero(match->out_src_mac))
 		rte_ether_addr_copy((const struct rte_ether_addr*)match->out_src_mac, &eth_hdr.d_addr);
-	eth_hdr.ether_type = doca_gw_get_l3_protol(match, OUTER_MATCH);
+	eth_hdr.ether_type = doca_dpdk_get_l3_protol(match, OUTER_MATCH);
 	memcpy(*header, &eth_hdr, sizeof(eth_hdr));
 	*header += sizeof(eth_hdr);
 	if (match->vlan_id) {
@@ -520,7 +520,7 @@ doca_dpdk_build_gre_header(uint8_t **header,
 
 	memset(&gre_hdr, 0, sizeof(struct rte_gre_hdr));
 	gre_hdr.k = 1;
-	gre_hdr.proto = doca_gw_get_l3_protol(cfg->match, INNER_MATCH);
+	gre_hdr.proto = doca_dpdk_get_l3_protol(cfg->match, INNER_MATCH);
 	memcpy(*header, &gre_hdr, sizeof(gre_hdr));
 	*header += sizeof(gre_hdr);
 	key_data = (uint32_t *)(*header);
@@ -742,7 +742,7 @@ doca_dpdk_build_rss_action(struct doca_dpdk_action_entry *entry,
 	for (qidx = 0; qidx < fwd_cfg->rss.num_queues; qidx++)
 		rss->queue[qidx] = fwd_cfg->rss.queues[qidx];
 	rss->conf.func = RTE_ETH_HASH_FUNCTION_DEFAULT;
-	rss->conf.types = doca_gw_get_rss_type(fwd_cfg->rss.rss_flags);
+	rss->conf.types = doca_dpdk_get_rss_type(fwd_cfg->rss.rss_flags);
 	rss->conf.queue = rss->queue;
 	action->type = RTE_FLOW_ACTION_TYPE_RSS;
 	action->conf = &rss->conf;
@@ -906,7 +906,7 @@ static int doca_dpdk_build_monitor_action(struct doca_dpdk_pipeline *pipe,
 	struct doca_flow_monitor *mon)
 {
 
-	if (mon->flags & DOCA_GW_COUNT) {
+	if (mon->flags & DOCA_FLOW_COUNT) {
 		doca_dpdk_build_counter_action(pipe, pipe->meter_id);
 	}
 	return 0;
@@ -1040,7 +1040,7 @@ doca_dpdk_pipe_create_entry_flow(struct doca_flow_pipeline_entry *entry, struct 
 		DOCA_LOG_ERR("modify pipe action fail.\n");
 		return NULL;
 	}
-	if (mon->flags != DOCA_GW_NONE &&
+	if (mon->flags != DOCA_FLOW_NONE &&
 	    doca_dpdk_build_monitor_action(pipe, mon)) {
 		DOCA_LOG_ERR("create monitor action fail.\n");
 		return NULL;
@@ -1142,7 +1142,7 @@ doca_dpdk_create_pipe_flow(struct doca_dpdk_pipeline *flow,
 		err->type = DOCA_ERROR_PIPE_BUILD_ACTION_ERROR;
 		return -1;
 	}
-	if (cfg->monitor && (cfg->monitor->flags && DOCA_GW_METER)) {
+	if (cfg->monitor && (cfg->monitor->flags && DOCA_FLOW_METER)) {
 		ret = doca_dpdk_build_meter_rule(cfg, flow);
 		if (ret) {
 			err->type = DOCA_ERROR_PIPE_BUILD_ACTION_ERROR;
@@ -1155,7 +1155,7 @@ doca_dpdk_create_pipe_flow(struct doca_dpdk_pipeline *flow,
 }
 
 struct doca_flow_pipeline*
-doca_dpdk_create_pipe(struct doca_flow_pipeline_cfg *cfg, struct doca_gw_error *err)
+doca_dpdk_create_pipe(struct doca_flow_pipeline_cfg *cfg, struct doca_flow_error *err)
 {
 	int ret;
 	uint32_t idx;
@@ -1212,7 +1212,7 @@ static struct doca_flow_port *doca_alloc_port_byid(uint8_t port_id, struct doca_
 static bool doca_dpdk_save_port(struct doca_flow_port *port)
 {
     int i = 0;
-    for ( i = 0 ; i < DOCA_GW_MAX_PORTS ; i++) {
+    for ( i = 0 ; i < DOCA_FLOW_MAX_PORTS ; i++) {
         if (doca_dpdk_used_ports[i] == NULL) {
             doca_dpdk_used_ports[i] = port;
             port->idx = i;
@@ -1230,7 +1230,7 @@ struct doca_flow_port * doca_dpdk_port_start(struct doca_flow_port_cfg *cfg,
     if ( port == NULL )
         return NULL;
     memset(port, 0, sizeof(struct doca_flow_port));
-    if (!doca_gw_save_port(port)) 
+    if (!doca_dpdk_save_port(port)) 
         goto fail_port_start;
     return port;
 fail_port_start:
@@ -1274,7 +1274,7 @@ void doca_dpdk_destroy(uint16_t port_id)
 	rte_spinlock_lock(&port->pipe_lock);
 	while((pipe = LIST_FIRST(&port->pipe_list))) {
 		LIST_REMOVE(pipe, next);
-		doca_gw_free_pipe(port_id, pipe);
+		doca_dpdk_free_pipe(port_id, pipe);
 	}
 	rte_spinlock_unlock(&port->pipe_lock);
 	doca_dpdk_used_ports[port_id] = NULL;

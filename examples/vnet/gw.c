@@ -5,7 +5,7 @@
 
 #include "gw.h"
 #include "doca_vnf.h"
-#include "doca_gw.h"
+#include "doca_flow.h"
 #include "doca_utils.h"
 #include "doca_log.h"
 #include "doca_fib.h"
@@ -44,7 +44,7 @@ DOCA_LOG_MODULE(GW);
 #define GW_DEFAULT_CIR (100000000/8)
 #define GW_DEFAULT_CBS (GW_DEFAULT_CIR << 4)
 
-static enum doca_gw_tun_type gw_tun_type = DOCA_TUN_GRE;
+static enum doca_flow_tun_type gw_tun_type = DOCA_TUN_GRE;
 
 static void gw_aged_flow_cb(struct doca_ft_user_ctx *ctx);
 static void gw_hw_aging_cb(void);
@@ -125,7 +125,7 @@ struct doca_flow_fwd_tbl *gw_build_port_fwd(int port_id)
 {
     struct doca_flow_fwd_table_cfg cfg = { .type = DOCA_FWD_PORT};
     cfg.port.id = port_id;
-    return doca_gw_create_fwd_tbl(&cfg);
+    return doca_flow_create_fwd_tbl(&cfg);
 }
 
 
@@ -145,7 +145,7 @@ static struct doca_flow_fwd_tbl *gw_build_rss_fwd(int n_queues)
     cfg.rss.queues = queues;
 	cfg.rss.rss_flags = DOCA_RSS_IP | DOCA_RSS_UDP | DOCA_RSS_IP;
     cfg.rss.num_queues = n_queues;
-    return doca_gw_create_fwd_tbl(&cfg);
+    return doca_flow_create_fwd_tbl(&cfg);
 }
 
 static
@@ -239,8 +239,8 @@ static void gw_fill_monior(struct doca_flow_monitor *monitor)
 	uint16_t *queues;
 	struct doca_fwd_table_cfg *fwd = &monitor->meter.fwd;
 
-	monitor->flags = DOCA_GW_COUNT;
-	monitor->flags |= DOCA_GW_METER;
+	monitor->flags = DOCA_FLOW_COUNT;
+	monitor->flags |= DOCA_FLOW_METER;
 	monitor->meter.cir = 100 * 1000 / 8;
 	monitor->meter.cbs = monitor->meter.cir / 8;
 
@@ -271,7 +271,7 @@ static struct doca_flow_pipeline *gw_build_ul_ol(struct doca_flow_port *port)
     // will not be used. mask means for each entry a value should be provided
     // a real value means a constant value and should not be added on any entry
     // added
-    struct doca_gw_pipeline_cfg pipe_cfg = {0};
+    struct doca_flow_pipeline_cfg pipe_cfg = {0};
     struct doca_flow_error err = {0};
     struct doca_flow_match match;
     struct doca_flow_actions actions = {0};
@@ -289,7 +289,7 @@ static struct doca_flow_pipeline *gw_build_ul_ol(struct doca_flow_port *port)
     pipe_cfg.monitor = &monitor;
     pipe_cfg.count  = false;
 
-    return doca_gw_create_pipe(&pipe_cfg,&err);
+    return doca_flow_create_pipe(&pipe_cfg,&err);
 }
 
 /**
@@ -309,7 +309,7 @@ static struct doca_flow_pipeline *gw_build_ol_to_ol(struct doca_flow_port *port)
     // will not be used. mask means for each entry a value should be provided
     // a real value means a constant value and should not be added on any entry
     // added
-    struct doca_gw_pipeline_cfg pipe_cfg = {0};
+    struct doca_flow_pipeline_cfg pipe_cfg = {0};
     struct doca_flow_error err = {0};
     struct doca_flow_match match;
     struct doca_flow_actions actions = {0};
@@ -328,7 +328,7 @@ static struct doca_flow_pipeline *gw_build_ol_to_ol(struct doca_flow_port *port)
     pipe_cfg.monitor = &monitor;
     pipe_cfg.count  = false;
 
-    return doca_gw_create_pipe(&pipe_cfg,&err);
+    return doca_flow_create_pipe(&pipe_cfg,&err);
 }
 
 /**
@@ -377,7 +377,7 @@ struct doca_flow_port *gw_init_doca_port(struct gw_port_cfg *port_cfg)
 
     snprintf(port_id_str, GW_MAX_PORT_STR,"%d",port_cfg->port_id);
 
-    doca_cfg_port.type = DOCA_GW_PORT_DPDK_BY_ID;
+    doca_cfg_port.type = DOCA_FLOW_PORT_DPDK_BY_ID;
     doca_cfg_port.queues = port_cfg->n_queues;
     doca_cfg_port.devargs = port_id_str;
     doca_cfg_port.priv_data_size = sizeof(struct gw_port_cfg);
@@ -508,7 +508,7 @@ struct doca_flow_pipeline_entry *gw_pipeline_add_ol_to_ol_entry(struct doca_pkt_
 
 void gw_rm_pipeline_entry(struct doca_flow_pipeline_entry *entry)
 {
-   doca_gw_rm_entry(0,entry);
+   doca_flow_rm_entry(0,entry);
 }
 
 static int gw_create(void)
@@ -548,7 +548,7 @@ static int gw_init_doca_ports_and_pipes(int ret, int nr_queues)
         return ret;
     }
     /* init doca framework */
-    if (doca_gw_init(&cfg,&err)) { 
+    if (doca_flow_init(&cfg,&err)) { 
         DOCA_LOG_ERR("failed to init doca:%s",err.message);
         return -1;
     }

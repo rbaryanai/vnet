@@ -36,8 +36,8 @@
  *  - aging
  *  - offload KPI's
  */
-#ifndef _DOCA_GW_H_
-#define _DOCA_GW_H_
+#ifndef _DOCA_FLOW_H_
+#define _DOCA_FLOW_H_
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -46,11 +46,6 @@
 struct doca_flow_port;
 struct doca_flow_pipeline; 
 struct doca_flow_pipeline_entry;
-
-enum doca_gw_modify_flags {
-    DOCA_MOD_NONE = 0,
-    DOCA_MOD_USE_FIB = 1 << 0,
-};
 
 /**
  * @brief :
@@ -87,8 +82,8 @@ struct doca_flow_cfg {
 };
 
 enum doca_flow_port_type {
-    DOCA_GW_PORT_DPDK,
-    DOCA_GW_PORT_DPDK_BY_ID,
+    DOCA_FLOW_PORT_DPDK,
+    DOCA_FLOW_PORT_DPDK_BY_ID,
 };
 
 struct doca_flow_port_cfg {
@@ -119,7 +114,7 @@ struct doca_flow_match {
     uint16_t out_src_port;
     uint16_t out_dst_port;
 
-    struct doca_gw_tun tun;
+    struct doca_flow_tun tun;
 
     /* exists if tunnel is used */
     struct doca_ip_addr in_src_ip;
@@ -130,14 +125,14 @@ struct doca_flow_match {
     uint16_t in_dst_port;
 };
 
-struct doca_gw_encap_action {
+struct doca_flow_encap_action {
   
     uint8_t src_mac[DOCA_ETHER_ADDR_LEN];
     uint8_t dst_mac[DOCA_ETHER_ADDR_LEN];
 
     struct doca_ip_addr in_src_ip;
     struct doca_ip_addr in_dst_ip;
-    struct doca_gw_tun tun;
+    struct doca_flow_tun tun;
 };
 
 /**
@@ -163,44 +158,16 @@ struct doca_flow_actions {
     uint32_t tcp_seq_shift;
     uint32_t tcp_ack_shift;
     
-    struct doca_gw_encap_action encap;
+    struct doca_flow_encap_action encap;
 };
 
 enum {
-	DOCA_GW_NONE = 0,
-	DOCA_GW_METER = (1 << 1),
-	DOCA_GW_COUNT = (1 << 2),
-	DOCA_GW_AGING = (1 << 3),
+	DOCA_FLOW_NONE = 0,
+	DOCA_FLOW_METER = (1 << 1),
+	DOCA_FLOW_COUNT = (1 << 2),
+	DOCA_FLOW_AGING = (1 << 3),
 };
 
-struct doca_flow_monitor {
-    uint8_t flags;
-    bool count;
-    struct meter {
-        uint32_t id;
-        uint64_t cir;
-        uint64_t cbs;
-		struct doca_flow_fwd_table_cfg fwd;
-    } m;
-
-    struct mirror {
-     
-    } mirror;
-
-    uint32_t aging;
-};
-
-/**
- * @brief - pipeline definition
- */
-struct doca_flow_pipeline_cfg {
-    const char *name;
-    struct doca_flow_port     *port;
-    struct doca_flow_match    *match;
-    struct doca_flow_actions  *actions;
-    struct doca_flow_monitor  *monitor;
-    bool                    count;    /* count for entire pipe */
-};
 
 enum doca_flow_fwd_tbl_type {
     DOCA_FWD_RSS,
@@ -231,6 +198,36 @@ struct doca_flow_fwd_table_cfg {
     };
 };
 
+
+struct doca_flow_monitor {
+    uint8_t flags;
+    bool count;
+    struct meter {
+        uint32_t id;
+        uint64_t cir;
+        uint64_t cbs;
+		struct doca_flow_fwd_table_cfg fwd;
+    } m;
+
+    struct mirror {
+     
+    } mirror;
+
+    uint32_t aging;
+};
+
+/**
+ * @brief - pipeline definition
+ */
+struct doca_flow_pipeline_cfg {
+    const char *name;
+    struct doca_flow_port     *port;
+    struct doca_flow_match    *match;
+    struct doca_flow_actions  *actions;
+    struct doca_flow_monitor  *monitor;
+    bool                    count;    /* count for entire pipe */
+};
+
 struct doca_flow_query {
     uint64_t total_bytes;
     uint64_t total_pkts;
@@ -245,7 +242,7 @@ struct doca_flow_query {
  *
  * @return 
  */
-struct doca_flow_fwd_tbl *doca_gw_create_fwd_tbl(struct doca_flow_fwd_table_cfg *cfg);
+struct doca_flow_fwd_tbl *doca_flow_create_fwd_tbl(struct doca_flow_fwd_table_cfg *cfg);
 
 /**
  * @brief 
@@ -301,7 +298,7 @@ uint8_t *doca_flow_port_priv_data(struct doca_flow_port *p);
  *
  * @return pipeline handler or NULL on failure
  */
-struct doca_flow_pipeline *doca_gw_create_pipe(struct doca_gw_pipeline_cfg *cfg, struct doca_flow_error *err);
+struct doca_flow_pipeline *doca_flow_create_pipe(struct doca_flow_pipeline_cfg *cfg, struct doca_flow_error *err);
 
 /**
  * @brief 
@@ -356,7 +353,7 @@ int doca_flow_rm_entry(uint16_t pipe_queue, struct doca_flow_pipeline_entry *ent
  *
  * @return 0 on success
  */
-int doca_flow_query(struct doca_flow_pipeline_entry *pe, struct doca_gw_query *q);
+int doca_flow_query(struct doca_flow_pipeline_entry *pe, struct doca_flow_query *q);
 
 
 
