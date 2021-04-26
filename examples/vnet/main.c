@@ -48,7 +48,7 @@ DOCA_LOG_MODULE(main);
 static volatile bool force_quit;
 
 uint16_t nr_queues = 4;
-uint16_t rx_only = 1;
+uint16_t rx_only = 0;
 uint16_t hw_offload = 1;
 uint64_t stats_timer = 1;
 

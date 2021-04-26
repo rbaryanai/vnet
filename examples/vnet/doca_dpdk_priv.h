@@ -4,6 +4,14 @@
 #include "doca_dpdk.h"
 #include "doca_flow.h"
 
+struct doca_flow_fwd_tbl {
+	const char *name;
+	void *handler;
+	uint32_t id;
+	struct doca_flow_fwd cfg;
+};
+
+
 struct doca_flow_pipeline_entry {
 	LIST_ENTRY(doca_flow_pipeline_entry) next;
 	int id;
@@ -19,7 +27,8 @@ struct doca_flow_pipeline {
 	uint32_t id;
 	uint32_t pipe_entry_id;
 	uint32_t nb_pipe_entrys;
-	struct doca_dpdk_pipeline flow;
+	struct doca_flow_fwd fwd_tbl;
+        struct doca_dpdk_pipeline flow;
 	rte_spinlock_t entry_lock;
 	LIST_HEAD(, doca_flow_pipeline_entry) entry_list;
 };

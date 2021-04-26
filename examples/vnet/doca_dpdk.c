@@ -763,7 +763,7 @@ static inline uint64_t doca_dpdk_get_rss_type(uint32_t rss_type)
 }
 
 static int doca_dpdk_build_rss_action(struct doca_dpdk_action_entry *entry,
-				      struct doca_flow_fwd_table_cfg *fwd_cfg)
+				      struct doca_flow_fwd *fwd_cfg)
 {
 	int qidx;
 	struct rte_flow_action *action = entry->action;
@@ -781,7 +781,7 @@ static int doca_dpdk_build_rss_action(struct doca_dpdk_action_entry *entry,
 }
 
 static int doca_dpdk_build_fwd(struct doca_dpdk_pipeline *pipe,
-			       struct doca_flow_fwd_table_cfg *fwd_cfg)
+			       struct doca_flow_fwd *fwd_cfg)
 {
 	struct doca_dpdk_action_entry *action_entry;
 
@@ -855,7 +855,7 @@ static int doca_dpdk_create_meter_policy(uint16_t port_id, uint32_t policy_id,
 	int ret;
 	struct rte_mtr_error error;
 	struct rte_flow_action_rss conf;
-	struct doca_flow_fwd_table_cfg *fwd = &mon->m.fwd;
+	struct doca_flow_fwd *fwd = &mon->m.fwd;
 	struct rte_flow_action g_actions[2], r_actions[2];
 	struct rte_mtr_meter_policy_params params;
 
@@ -1058,7 +1058,7 @@ static struct rte_flow *doca_dpdk_create_def_rss(uint16_t port_id)
 static struct rte_flow *doca_dpdk_pipe_create_entry_flow(
 	struct doca_dpdk_pipeline *pipe, struct doca_flow_pipeline_entry *entry,
 	struct doca_flow_match *match, struct doca_flow_actions *actions,
-	struct doca_flow_monitor *mon, struct doca_flow_fwd_table_cfg *cfg,
+	struct doca_flow_monitor *mon, struct doca_flow_fwd *cfg,
 	__rte_unused struct doca_flow_error *err)
 {
 	DOCA_LOG_DBG("pip create new flow:\n");
@@ -1097,7 +1097,7 @@ static struct rte_flow *doca_dpdk_pipe_create_entry_flow(
 struct doca_flow_pipeline_entry *doca_dpdk_pipe_create_flow(
 	struct doca_flow_pipeline *pipeline, struct doca_flow_match *match,
 	struct doca_flow_actions *actions, struct doca_flow_monitor *mon,
-	struct doca_flow_fwd_table_cfg *cfg, struct doca_flow_error *err)
+	struct doca_flow_fwd *cfg, struct doca_flow_error *err)
 {
 	struct doca_flow_pipeline_entry *entry;
 
@@ -1200,7 +1200,8 @@ static int doca_dpdk_create_pipe_flow(struct doca_dpdk_pipeline *flow,
 
 struct doca_flow_pipeline *
 doca_dpdk_create_pipe(struct doca_flow_pipeline_cfg *cfg,
-		      struct doca_flow_error *err)
+                        struct doca_flow_fwd *fwd,
+                        struct doca_flow_error *err)
 {
 	int ret;
 	uint32_t idx;
@@ -1229,6 +1230,8 @@ doca_dpdk_create_pipe(struct doca_flow_pipeline_cfg *cfg,
 		free(pl);
 		return NULL;
 	}
+        if (fwd != NULL)
+            pl->fwd_tbl = *fwd;
 	rte_spinlock_lock(&cfg->port->pipe_lock);
 	LIST_INSERT_HEAD(&cfg->port->pipe_list, pl, next);
 	rte_spinlock_unlock(&cfg->port->pipe_lock);

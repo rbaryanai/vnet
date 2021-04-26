@@ -167,7 +167,12 @@ enum {
 	DOCA_FLOW_AGING = (1 << 3),
 };
 
-enum doca_flow_fwd_tbl_type { DOCA_FWD_RSS, DOCA_FWD_PORT };
+enum doca_flow_fwd_type { 
+    DOCA_FWD_NONE = 0,
+    DOCA_FWD_RSS,
+    DOCA_FWD_PORT, 
+    DOCA_FWD_PIPE,
+};
 
 enum doca_rss_type {
 	DOCA_RSS_IP = (1 << 0),
@@ -178,20 +183,25 @@ enum doca_rss_type {
 /**
  * @brief - forwarding configuration
  */
-struct doca_flow_fwd_table_cfg {
-	enum doca_flow_fwd_tbl_type type;
-	union {
-		struct fwd_rss {
-			uint32_t rss_flags;
-			uint16_t *queues;
-			int num_queues;
-		} rss;
+struct doca_flow_fwd {
+    enum doca_flow_fwd_type type;
+    union {
+        struct fwd_rss {
+                uint32_t rss_flags;
+                uint16_t *queues;
+                int num_queues;
+        } rss;
 
-		struct port {
-			int id;
-		} port;
-	};
+        struct port {
+                int id;
+        } port;
+
+        struct next_pipelne {
+            struct doca_flow_pipeline *next;
+        } next_pipeline;
+    };
 };
+
 
 struct doca_flow_monitor {
 	uint8_t flags;
@@ -200,7 +210,7 @@ struct doca_flow_monitor {
 		uint32_t id;
 		uint64_t cir;
 		uint64_t cbs;
-		struct doca_flow_fwd_table_cfg fwd;
+		struct doca_flow_fwd fwd;
 	} m;
 
 	struct mirror {
@@ -237,7 +247,7 @@ struct doca_flow_query {
  * @return
  */
 struct doca_flow_fwd_tbl *
-doca_flow_create_fwd_tbl(struct doca_flow_fwd_table_cfg *cfg);
+doca_flow_create_fwd_tbl(struct doca_flow_fwd *cfg);
 
 /**
  * @brief
@@ -293,6 +303,7 @@ uint8_t *doca_flow_port_priv_data(struct doca_flow_port *p);
  */
 struct doca_flow_pipeline *
 doca_flow_create_pipe(struct doca_flow_pipeline_cfg *cfg,
+                      struct doca_flow_fwd_tbl *fwd,
 		      struct doca_flow_error *err);
 
 /**
@@ -311,7 +322,7 @@ doca_flow_create_pipe(struct doca_flow_pipeline_cfg *cfg,
 struct doca_flow_pipeline_entry *doca_flow_pipeline_add_entry(
 	uint16_t pipe_queue, struct doca_flow_pipeline *pipeline,
 	struct doca_flow_match *match, struct doca_flow_actions *actions,
-	struct doca_flow_monitor *mod, struct doca_flow_fwd_tbl *fwd,
+	struct doca_flow_monitor *mod, struct doca_flow_fwd *fwd,
 	struct doca_flow_error *err);
 
 /**
@@ -370,4 +381,6 @@ bool doca_flow_query_aging(struct doca_flow_pipeline_entry *arr, int arr_len,
 
 void doca_flow_destroy(uint16_t port_id);
 void doca_flow_dump_pipeline(uint16_t port_id);
+
+struct doca_flow_fwd *doca_flow_fwd_cast(struct doca_flow_fwd_tbl *tbl);
 #endif

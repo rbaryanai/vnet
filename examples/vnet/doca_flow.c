@@ -10,12 +10,6 @@
 
 DOCA_LOG_MODULE(doca_flow);
 
-struct doca_flow_fwd_tbl {
-	const char *name;
-	void *handler;
-	uint32_t id;
-	struct doca_flow_fwd_table_cfg cfg;
-};
 
 uint8_t *doca_flow_port_priv_data(struct doca_flow_port *p)
 {
@@ -41,14 +35,15 @@ int doca_flow_init(struct doca_flow_cfg *cfg, struct doca_flow_error *err)
 struct doca_flow_pipeline_entry *doca_flow_pipeline_add_entry(
 	uint16_t pipe_queue, struct doca_flow_pipeline *pipeline,
 	struct doca_flow_match *match, struct doca_flow_actions *actions,
-	struct doca_flow_monitor *mon, struct doca_flow_fwd_tbl *fwd,
+	struct doca_flow_monitor *mon, struct doca_flow_fwd *fwd,
 	struct doca_flow_error *err)
 {
 	if (pipeline == NULL || match == NULL || actions == NULL || mon == NULL)
 		return NULL;
 	pipe_queue = pipe_queue;
 	return doca_dpdk_pipe_create_flow(pipeline, match, actions, mon,
-					  &fwd->cfg, err);
+					  (fwd != NULL)?fwd:&pipeline->fwd_tbl,
+                                           err);
 }
 
 int doca_flow_rm_entry(uint16_t pipe_queue,
@@ -111,11 +106,14 @@ int doca_flow_port_stop(struct doca_flow_port *port)
 
 struct doca_flow_pipeline *
 doca_flow_create_pipe(struct doca_flow_pipeline_cfg *cfg,
+                      struct doca_flow_fwd_tbl *fwd,
 		      struct doca_flow_error *err)
 {
 	if (cfg == NULL)
 		return NULL;
-	return doca_dpdk_create_pipe(cfg, err);
+	return doca_dpdk_create_pipe(cfg, 
+                          (fwd != NULL)?&fwd->cfg:NULL,
+                          err);
 }
 
 void doca_flow_destroy(uint16_t port_id)
@@ -129,7 +127,7 @@ void doca_flow_dump_pipeline(uint16_t port_id)
 }
 
 struct doca_flow_fwd_tbl *
-doca_flow_create_fwd_tbl(struct doca_flow_fwd_table_cfg *cfg)
+doca_flow_create_fwd_tbl(struct doca_flow_fwd *cfg)
 {
 	static uint32_t fwd_id;
 	struct doca_flow_fwd_tbl *tbl =
@@ -142,4 +140,10 @@ doca_flow_create_fwd_tbl(struct doca_flow_fwd_table_cfg *cfg)
 	tbl->id = fwd_id++;
 	DOCA_LOG_INFO("add fwd tbl");
 	return tbl;
+}
+
+
+struct doca_flow_fwd *doca_flow_fwd_cast(struct doca_flow_fwd_tbl *tbl)
+{
+    return &tbl->cfg;
 }
