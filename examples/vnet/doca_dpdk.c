@@ -10,6 +10,8 @@
 #include "doca_log.h"
 #include "doca_id_pool.h"
 
+//#define SUPPORT_METER 0
+
 DOCA_LOG_MODULE(doca_dpdk);
 
 struct doca_dpdk_engine {
@@ -822,6 +824,7 @@ static int doca_dpdk_create_meter_rule(int port_id, uint32_t meter_info,
 				       uint32_t meter_id)
 
 {
+#ifdef SUPPORT_METER 
 	int ret;
 	struct rte_mtr_params params;
 	struct rte_mtr_error error;
@@ -841,12 +844,14 @@ static int doca_dpdk_create_meter_rule(int port_id, uint32_t meter_info,
 		    error.message ? error.message : "(no stated reason)");
 		return -1;
 	}
+#endif
 	return 0;
 }
 
 static int doca_dpdk_create_meter_policy(uint16_t port_id, uint32_t policy_id,
 					 struct doca_flow_monitor *mon)
 {
+#ifdef SUPPORT_METER 
 	int ret;
 	struct rte_mtr_error error;
 	struct rte_flow_action_rss conf;
@@ -885,6 +890,7 @@ static int doca_dpdk_create_meter_policy(uint16_t port_id, uint32_t policy_id,
 		    error.message ? error.message : "(no stated reason)");
 		return -1;
 	}
+#endif
 	return 0;
 }
 
