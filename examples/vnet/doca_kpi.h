@@ -7,11 +7,12 @@
 struct doca_flow_pipeline;
 
 struct doca_pipeline_kpi {
-   uint64_t avg_cycles;
-   uint64_t total_cycles;
-   uint64_t load;
+	uint64_t avg_cycles;
+	uint64_t total_cycles;
+	uint64_t load;
 };
 
-void doca_pipeline_kpi_get(struct doca_flow_pipeline *pl, struct doca_pipeline_kpi *kpi);
+void doca_pipeline_kpi_get(struct doca_flow_pipeline *pl,
+			   struct doca_pipeline_kpi *kpi);
 
 #endif

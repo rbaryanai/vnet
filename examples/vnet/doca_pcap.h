@@ -10,7 +10,7 @@ struct doca_pcap_hander;
  *
  * @return handler
  */
-struct doca_pcap_hander *doca_pcap_file_start(const char * filename);
+struct doca_pcap_hander *doca_pcap_file_start(const char *filename);
 
 /**
  * @brief - write a packet to file
@@ -21,10 +21,10 @@ struct doca_pcap_hander *doca_pcap_file_start(const char * filename);
  * @param timestamp    - time of day in microsecond
  * @param cap_len      - option to trim packet. 0 will write entire packet
  *
- * @return 
+ * @return
  */
-int doca_pcap_write(struct doca_pcap_hander *p_handler,  uint8_t * buff, int buff_len,
-                    uint64_t timestamp, int cap_len);
+int doca_pcap_write(struct doca_pcap_hander *p_handler, uint8_t *buff,
+		    int buff_len, uint64_t timestamp, int cap_len);
 
 /**
  * @brief - close file. p_handler is not valid after that

@@ -5,14 +5,14 @@
 #include <stdbool.h>
 
 struct doca_id_pool {
-        int idx;
-        int size;
-        int keys_arr[0];
-}; 
+	int idx;
+	int size;
+	int keys_arr[0];
+};
 
 struct doca_id_pool_cfg {
-    int size;
-    int min;
+	int size;
+	int min;
 };
 
 struct doca_id_pool *doca_id_pool_create(struct doca_id_pool_cfg *cfg);
@@ -27,7 +27,7 @@ bool doca_id_pool_has_ids(struct doca_id_pool *pool);
 
 static inline int doca_id_pool_get_used(struct doca_id_pool *pool)
 {
-        return pool->idx;
+	return pool->idx;
 }
 
 #endif

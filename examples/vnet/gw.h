@@ -7,8 +7,8 @@
 #include "doca_pkt.h"
 
 struct gw_port_cfg {
-    uint16_t n_queues;
-    uint16_t port_id;
+	uint16_t n_queues;
+	uint16_t port_id;
 };
 
 /**
@@ -16,7 +16,7 @@ struct gw_port_cfg {
  *  for debug/log purpose
  *
  * @param pinfo
- * @param str    - pointer to preallocated string 
+ * @param str    - pointer to preallocated string
  * @param len    - len of the string
  *
  * @return -1 on fail or str len on success
@@ -28,7 +28,7 @@ int gw_parse_pkt_str(struct doca_pkt_info *pinfo, char *str, int len);
  *  match on:
  *            outer dst_ip/vni
  *            inner 5-tuple
- *        
+ *
  *  modify:
  *            decap
  *            inner-dst ip
@@ -40,7 +40,7 @@ int gw_parse_pkt_str(struct doca_pkt_info *pinfo, char *str, int len);
  *
  * @param p
  *
- * @return 
+ * @return
  */
 struct doca_flow_pipeline *gw_init_ol_to_ul_pipeline(struct doca_flow_port *p);
 
@@ -50,7 +50,7 @@ struct doca_flow_pipeline *gw_init_ol_to_ul_pipeline(struct doca_flow_port *p);
  *  match on:
  *            outer dst_ip/vni
  *            inner 5-tuple
- *        
+ *
  *  modify:
  *            decap
  *            inner-dst ip
@@ -62,26 +62,24 @@ struct doca_flow_pipeline *gw_init_ol_to_ul_pipeline(struct doca_flow_port *p);
  *  fwd:      port
  *
  *
- * @return 
+ * @return
  */
 struct doca_flow_pipeline *gw_init_ol_to_ol_pipeline(struct doca_flow_port *p);
-
-
 
 /**
  * @brief - init doca port matching the provided configiration.
  *
  * @param port_cfg
  *
- * @return 
+ * @return
  */
 struct doca_flow_port *gw_init_doca_port(struct gw_port_cfg *port_cfg);
 
 enum gw_classification {
-    GW_CLS_OL_TO_UL,
-    GW_CLS_OL_TO_OL,
-    GW_BYPASS_L4,
-    GW_BYPASS,
+	GW_CLS_OL_TO_UL,
+	GW_CLS_OL_TO_OL,
+	GW_BYPASS_L4,
+	GW_BYPASS,
 };
 
 /**
@@ -90,7 +88,7 @@ enum gw_classification {
  *
  * @param pinfo
  *
- * @return 
+ * @return
  */
 enum gw_classification gw_classifiy_pkt(struct doca_pkt_info *pinfo);
 
@@ -102,18 +100,21 @@ enum gw_classification gw_classifiy_pkt(struct doca_pkt_info *pinfo);
  *
  * @return handle
  */
-struct doca_flow_pipeline_entry *gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_info *pinfo, struct doca_flow_pipeline *pipeline);
+struct doca_flow_pipeline_entry *
+gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_info *pinfo,
+			       struct doca_flow_pipeline *pipeline);
 
 /**
- * @brief 
+ * @brief
  *
  * @param pinfo
  * @param pipeline
  *
- * @return 
+ * @return
  */
-struct doca_flow_pipeline_entry *gw_pipeline_add_ol_to_ol_entry(struct doca_pkt_info *pinfo, struct doca_flow_pipeline *pipeline);
-
+struct doca_flow_pipeline_entry *
+gw_pipeline_add_ol_to_ol_entry(struct doca_pkt_info *pinfo,
+			       struct doca_flow_pipeline *pipeline);
 
 void gw_rm_pipeline_entry(struct doca_flow_pipeline_entry *entry);
 
