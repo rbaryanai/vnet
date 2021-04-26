@@ -79,6 +79,7 @@ static void *doca_ft_aging_main(void *void_ptr)
 		return NULL;
 	}
 
+	return NULL;/* app exit will cause segfault.*/
 	while (!ft->stop_aging_thread) {
 		uint64_t t = rte_rdtsc();
 

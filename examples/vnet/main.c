@@ -47,12 +47,15 @@ DOCA_LOG_MODULE(main);
 
 static volatile bool force_quit;
 
-uint16_t nr_queues = 2;
+uint16_t nr_queues = 4;
+uint16_t rx_only = 1;
+uint16_t hw_offload = 1;
+uint64_t stats_timer = 1;
+
 static const char *pcap_file_name =
 	"/var/opt/rbaryanai/vnet/build/examples/vnet/test.pcap";
-static struct doca_pcap_hander *ph;
-
 static struct doca_vnf *vnf;
+static struct doca_pcap_hander *ph;
 
 struct vnf_per_core_params {
 	int ports[VNF_NUM_OF_PORTS];
@@ -60,9 +63,7 @@ struct vnf_per_core_params {
 	int core_id;
 	bool used;
 };
-
 struct vnf_per_core_params core_params_arr[RTE_MAX_LCORE];
-static uint64_t stats_timer = 1;
 
 /*this is very bad way to do it, need to set start time and use rte_*/
 static inline uint64_t gw_get_time_usec(void)
@@ -95,8 +96,8 @@ static void gw_process_offload(struct rte_mbuf *mbuf)
 		return;
 	vnf->doca_vnf_process_pkt(&pinfo);
 	if (ph)
-		doca_pcap_write(ph, pinfo.outer.l2,
-			pinfo.len, gw_get_time_usec(), 0);
+		doca_pcap_write(ph, pinfo.outer.l2, pinfo.len,
+				gw_get_time_usec(), 0);
 	vnf_adjust_mbuf(mbuf, &pinfo);
 }
 
@@ -104,10 +105,12 @@ static int gw_process_pkts(void *p)
 {
 	uint64_t cur_tsc, last_tsc;
 	struct rte_mbuf *mbufs[VNF_RX_BURST_SIZE];
-	uint16_t j, nb_rx;
+	uint16_t j, nb_rx, queue_id;
 	uint32_t port_id = 0, core_id = rte_lcore_id();
 	struct vnf_per_core_params *params = (struct vnf_per_core_params *)p;
 
+	DOCA_LOG_INFO("core %u process queue %u start", core_id,
+		      params->queues[port_id]);
 	last_tsc = rte_rdtsc();
 	while (!force_quit) {
 		if (core_id == 0) {
@@ -118,14 +121,18 @@ static int gw_process_pkts(void *p)
 			}
 		}
 		for (port_id = 0; port_id < 2; port_id++) {
-			nb_rx =
-			    rte_eth_rx_burst(port_id, params->queues[port_id],
-					     mbufs, VNF_RX_BURST_SIZE);
+			queue_id = params->queues[port_id];
+			nb_rx = rte_eth_rx_burst(port_id, queue_id, mbufs,
+						 VNF_RX_BURST_SIZE);
 			for (j = 0; j < nb_rx; j++) {
-				gw_process_offload(mbufs[j]);
-				rte_eth_tx_burst((mbufs[j]->port == 0) ? 1 : 0,
-						 params->queues[port_id],
-						 &mbufs[j], 1);
+				if (hw_offload)
+					gw_process_offload(mbufs[j]);
+				if (rx_only)
+					rte_pktmbuf_free(mbufs[j]);
+				else
+					rte_eth_tx_burst(port_id == 0 ? 1 : 0,
+							 queue_id, &mbufs[j],
+							 1);
 			}
 		}
 	}
@@ -159,7 +166,10 @@ static void gw_info_usage(const char *prgname)
 {
 	printf("%s [EAL options] -- \n"
 	       "  --log_level: set log level\n"
-	       "  --stats_timer: set interval to dump stats information",
+	       "  --stats_timer: set interval to dump stats information"
+	       "  --nr_queues: set queues number\n"
+	       "  --rx_only: set rx_only 0 or 1\n"
+	       "  --hw_offload: set hw offload 0 or 1\n",
 	       prgname);
 }
 
@@ -183,7 +193,10 @@ static int gw_info_parse_args(int argc, char **argv)
 	static struct option long_option[] = {
 		{"log_level", 1, NULL, 0},
 		{"stats_timer", 1, NULL, 1},
-		{NULL, 0, 0, 0}
+		{"nr_queues", 1, NULL, 2},
+		{"rx_only", 1, NULL, 3},
+		{"hw_offload", 1, NULL, 4},
+		{NULL, 0, 0, 0},
 	};
 
 	if (argc == 1) {
@@ -202,6 +215,22 @@ static int gw_info_parse_args(int argc, char **argv)
 			stats_timer = gw_parse_uint32(optarg);
 			printf("set stats_timer:%lu\n", stats_timer);
 			break;
+		case 2:
+			nr_queues = gw_parse_uint32(optarg);
+			if (nr_queues > 16) {
+				printf("nr_queues should be 2 - 16\n");
+				return -1;
+			}
+			printf("set nr_queues:%u.\n", nr_queues);
+			break;
+		case 3:
+			rx_only = gw_parse_uint32(optarg);
+			printf("set rx_only:%u.\n", rx_only == 0 ? 0 : 1);
+			break;
+		case 4:
+			hw_offload = gw_parse_uint32(optarg);
+			printf("set hw_offload:%u.\n", hw_offload == 0 ? 0 : 1);
+			break;
 		default:
 			gw_info_usage(prgname);
 			return -1;
@@ -211,10 +240,8 @@ static int gw_info_parse_args(int argc, char **argv)
 }
 static int init_dpdk(int argc, char **argv)
 {
-	int ret;
+	int i, ret, core_idx = 0;
 	uint16_t nr_ports;
-	int i;
-	int total_cores = 0;
 
 	memset(core_params_arr, 0, sizeof(core_params_arr));
 	ret = rte_eal_init(argc, argv);
@@ -226,15 +253,15 @@ static int init_dpdk(int argc, char **argv)
 	argv += ret;
 	gw_info_parse_args(argc, argv);
 
-	for (i = 0; i < 32; i++) {
+	for (i = 0; i < nr_queues; i++) {
 		if (rte_lcore_is_enabled(i)) {
-			core_params_arr[total_cores].ports[0] = 0;
-			core_params_arr[total_cores].ports[1] = 1;
-			core_params_arr[total_cores].queues[0] = total_cores;
-			core_params_arr[total_cores].queues[1] = total_cores;
-			core_params_arr[total_cores].core_id = i;
-			core_params_arr[total_cores].used = true;
-			total_cores++;
+			core_params_arr[core_idx].ports[0] = 0;
+			core_params_arr[core_idx].ports[1] = 1;
+			core_params_arr[core_idx].queues[0] = core_idx;
+			core_params_arr[core_idx].queues[1] = core_idx;
+			core_params_arr[core_idx].core_id = i;
+			core_params_arr[core_idx].used = true;
+			core_idx++;
 		}
 	}
 	nr_ports = rte_eth_dev_count_avail();
@@ -252,7 +279,6 @@ static bool capture_en = 0;
 
 int main(int argc, char **argv)
 {
-	int total_cores;
 	int i = 0;
 
 	if (init_dpdk(argc, argv)) {
@@ -260,14 +286,15 @@ int main(int argc, char **argv)
 		return -1;
 	}
 	stats_timer *= rte_get_timer_hz();
-	total_cores = count_lcores();
-	DOCA_LOG_INFO("init ports: lcores = %d\n", total_cores);
+	if (nr_queues > count_lcores())
+		nr_queues = count_lcores();
+	DOCA_LOG_INFO("init ports: nr_queues = %d\n", nr_queues);
 
-	gw_init_port(0, total_cores);
-	gw_init_port(1, total_cores);
+	gw_init_port(0, nr_queues);
+	gw_init_port(1, nr_queues);
 
 	vnf = gw_get_doca_vnf();
-	vnf->doca_vnf_init((void *)&total_cores);
+	vnf->doca_vnf_init((void *)&nr_queues);
 
 	DOCA_LOG_INFO("VNF initiated!\n");
 	if (capture_en)
