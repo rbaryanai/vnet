@@ -818,7 +818,7 @@ static int doca_dpdk_create_meter_profile(uint16_t port_id, uint32_t id,
 	return 0;
 }
 
-static int doca_dpdk_create_meter_rule(int port_id, uint32_t profile_id,
+static int doca_dpdk_create_meter_rule(int port_id, uint32_t meter_info,
 				       uint32_t meter_id)
 
 {
@@ -831,8 +831,8 @@ static int doca_dpdk_create_meter_rule(int port_id, uint32_t profile_id,
 	params.stats_mask = 0xffff;
 	params.use_prev_mtr_color = 0;
 	params.dscp_table = NULL;
-	params.meter_profile_id = profile_id;
-	params.meter_policy_id = meter_id;
+	params.meter_profile_id = meter_info;
+	params.meter_policy_id = meter_info;
 	ret = rte_mtr_create(port_id, meter_id, &params, 0, &error);
 	if (ret != 0) {
 		DOCA_LOG_ERR(
@@ -907,24 +907,30 @@ static int doca_dpdk_build_meter_rule(struct doca_flow_pipeline_cfg *cfg,
 	    doca_dpdk_create_meter_policy(pipeline->port_id, id, cfg->monitor);
 	if (ret < 0)
 		return -1;
-	ret = doca_dpdk_create_meter_rule(pipeline->port_id, id, id);
-	if (ret < 0)
-		return -1;
-	pipeline->meter_id = id;
+	pipeline->meter_info = id;
 	DOCA_LOG_DBG("create meter id:%d success", id);
 	return 0;
 }
 
-static void doca_dpdk_build_meter_action(struct doca_dpdk_pipeline *pipe)
+static int doca_dpdk_build_meter_action(struct doca_dpdk_pipeline *pipe,
+					uint32_t *meter_id)
 {
+	int ret;
+	static uint32_t meter_id_s = 1;
 	struct doca_dpdk_action_entry *entry;
 	struct doca_dpdk_action_meter_data *meter_data;
 
+	ret = doca_dpdk_create_meter_rule(pipe->port_id, pipe->meter_info,
+					  meter_id_s);
+	if (ret < 0)
+		return -1;
 	entry = &pipe->action_entry[pipe->nb_actions_entry++];
 	meter_data = &entry->action_data.meter;
-	meter_data->conf.mtr_id = pipe->meter_id;
+	meter_data->conf.mtr_id = meter_id_s;
 	entry->action->type = RTE_FLOW_ACTION_TYPE_METER;
 	entry->action->conf = &meter_data->conf;
+	*meter_id = meter_id_s++;
+	return 0;
 }
 
 static void doca_dpdk_build_counter_action(struct doca_dpdk_pipeline *pipe)
@@ -939,9 +945,8 @@ static void doca_dpdk_build_counter_action(struct doca_dpdk_pipeline *pipe)
 static int doca_dpdk_build_monitor_action(struct doca_dpdk_pipeline *pipe,
 					  struct doca_flow_monitor *mon)
 {
-	if (mon->flags & DOCA_FLOW_COUNT) {
+	if (mon->flags & DOCA_FLOW_COUNT)
 		doca_dpdk_build_counter_action(pipe);
-	}
 	return 0;
 }
 
@@ -1045,9 +1050,9 @@ static struct rte_flow *doca_dpdk_create_def_rss(uint16_t port_id)
 }
 
 static struct rte_flow *doca_dpdk_pipe_create_entry_flow(
-	struct doca_dpdk_pipeline *pipe, struct doca_flow_match *match,
-	struct doca_flow_actions *actions, struct doca_flow_monitor *mon,
-	struct doca_flow_fwd_table_cfg *cfg,
+	struct doca_dpdk_pipeline *pipe, struct doca_flow_pipeline_entry *entry,
+	struct doca_flow_match *match, struct doca_flow_actions *actions,
+	struct doca_flow_monitor *mon, struct doca_flow_fwd_table_cfg *cfg,
 	__rte_unused struct doca_flow_error *err)
 {
 	DOCA_LOG_DBG("pip create new flow:\n");
@@ -1069,12 +1074,15 @@ static struct rte_flow *doca_dpdk_pipe_create_entry_flow(
 		DOCA_LOG_ERR("create monitor action fail.\n");
 		return NULL;
 	}
-	if (!pipe->meter_id && doca_dpdk_build_fwd(pipe, cfg)) {
+	if (!pipe->meter_info && doca_dpdk_build_fwd(pipe, cfg)) {
 		DOCA_LOG_ERR("build pipe fwd action fail.");
 		return NULL;
 	}
-	if (pipe->meter_id)
-		doca_dpdk_build_meter_action(pipe);
+	if (pipe->meter_info &&
+	    doca_dpdk_build_meter_action(pipe, &entry->meter_id)) {
+		DOCA_LOG_ERR("build pipe meter action fail.");
+		return NULL;
+	}
 	doca_dpdk_build_end_action(pipe);
 	return doca_dpdk_create_flow(pipe->port_id, &pipe->attr, pipe->items,
 				     pipe->actions);
@@ -1085,7 +1093,6 @@ struct doca_flow_pipeline_entry *doca_dpdk_pipe_create_flow(
 	struct doca_flow_actions *actions, struct doca_flow_monitor *mon,
 	struct doca_flow_fwd_table_cfg *cfg, struct doca_flow_error *err)
 {
-
 	struct doca_flow_pipeline_entry *entry;
 
 	entry = (struct doca_flow_pipeline_entry *)malloc(
@@ -1093,7 +1100,7 @@ struct doca_flow_pipeline_entry *doca_dpdk_pipe_create_flow(
 	if (entry == NULL)
 		return NULL;
 	entry->pipe_entry = doca_dpdk_pipe_create_entry_flow(
-	    &pipeline->flow, match, actions, mon, cfg, err);
+	    &pipeline->flow, entry, match, actions, mon, cfg, err);
 	if (entry->pipe_entry == NULL) {
 		DOCA_LOG_INFO("create pip entry fail,idex:%d",
 			      pipeline->pipe_entry_id);
@@ -1117,6 +1124,10 @@ int doca_dpdk_pipe_free_entry(uint16_t portid,
 {
 	int ret;
 	struct rte_flow_error flow_err;
+	struct rte_mtr_error mtr_err;
+
+	if (entry->meter_id)
+		rte_mtr_destroy(portid, entry->meter_id, &mtr_err);
 
 	ret = rte_flow_destroy(portid, (struct rte_flow *)entry->pipe_entry,
 			       &flow_err);
@@ -1283,10 +1294,10 @@ static void doca_dpdk_free_pipe(uint16_t portid,
 		doca_dpdk_pipe_free_entry(portid, entry);
 		free(entry);
 	}
-	meter_id = pipe->flow.meter_id;
+	meter_id = pipe->flow.meter_info;
 	if (meter_id) { /*all flows delete, destroy meter rule*/
 		struct rte_mtr_error mtr_err;
-		rte_mtr_destroy(portid, meter_id, &mtr_err);
+
 		rte_mtr_meter_policy_delete(portid, meter_id, &mtr_err);
 		rte_mtr_meter_profile_delete(portid, meter_id, &mtr_err);
 	}

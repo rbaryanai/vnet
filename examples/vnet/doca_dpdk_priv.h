@@ -7,6 +7,7 @@
 struct doca_flow_pipeline_entry {
 	LIST_ENTRY(doca_flow_pipeline_entry) next;
 	int id;
+	uint32_t meter_id;
 	void *pipe_entry;
 };
 

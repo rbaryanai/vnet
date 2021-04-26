@@ -126,6 +126,7 @@ static struct doca_flow_fwd_tbl *gw_build_port_fwd(int port_id)
 	return doca_flow_create_fwd_tbl(&cfg);
 }
 
+/*RSS not include core0, for n_queue: 1 - n_queue*/
 static struct doca_flow_fwd_tbl *gw_build_rss_fwd(int n_queues)
 {
 	int i;
@@ -133,12 +134,12 @@ static struct doca_flow_fwd_tbl *gw_build_rss_fwd(int n_queues)
 	uint16_t *queues;
 
 	queues = malloc(sizeof(uint16_t) * n_queues);
-	for (i = 0; i < n_queues; i++)
-		queues[i] = i;
+	for (i = 1; i < n_queues; i++)
+		queues[i - 1] = i;
 	cfg.type = DOCA_FWD_RSS;
 	cfg.rss.queues = queues;
 	cfg.rss.rss_flags = DOCA_RSS_IP | DOCA_RSS_UDP | DOCA_RSS_IP;
-	cfg.rss.num_queues = n_queues;
+	cfg.rss.num_queues = n_queues - 1;
 	return doca_flow_create_fwd_tbl(&cfg);
 }
 
@@ -224,22 +225,21 @@ static void gw_build_encap_actions(struct doca_flow_actions *actions)
 
 static void gw_fill_monior(struct doca_flow_monitor *monitor)
 {
-	uint16_t idx, n_queues = 2; /*how to input rss queue*/
+	uint16_t n_queues = 2; /*how to input rss queue*/
 	uint16_t *queues;
 	struct doca_flow_fwd_table_cfg *fwd = &monitor->m.fwd;
 
 	monitor->flags = DOCA_FLOW_COUNT;
 	monitor->flags |= DOCA_FLOW_METER;
-	monitor->m.cir = 100 * 1000 / 8;
+	monitor->m.cir = 1000000 * 1000 / 8;
 	monitor->m.cbs = monitor->m.cir / 8;
-
 	queues = malloc(sizeof(uint16_t) * n_queues);
-	for (idx = 1; idx < n_queues; idx++) /*queue 1 - n_queues*/
-		queues[idx - 1] = idx;
+	queues[0] = 2;
+	queues[1] = 3;
 	fwd->type = DOCA_FWD_RSS;
 	fwd->rss.queues = queues;
 	fwd->rss.rss_flags = DOCA_RSS_IP | DOCA_RSS_UDP | DOCA_RSS_IP;
-	fwd->rss.num_queues = n_queues - 1;
+	fwd->rss.num_queues = n_queues;
 }
 
 /**
