@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdarg.h>
 
+#define __doca_unused __attribute__((__unused__))
 
 enum doca_log_level {
    DOCA_LOG_LEVEL_EMERG = 1U,

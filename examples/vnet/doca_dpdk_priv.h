@@ -1,6 +1,9 @@
 #ifndef _DOCA_DPDK_PRIV_H_
 #define _DOCA_DPDK_PRIV_H_
 
+#include "doca_flow.h"
+#include "doca_dpdk.h"
+
 struct doca_flow_pipeline_entry {
 	LIST_ENTRY(doca_flow_pipeline_entry) next;
     int id;

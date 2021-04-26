@@ -82,7 +82,7 @@ struct doca_flow_port * doca_flow_port_start(struct doca_flow_port_cfg *cfg, str
 		//TODO: need to parse devargs
 		DOCA_LOG_INFO("new doca port type:dpdk port id:%s", cfg->devargs);
 		cfg->port_id = atoi(cfg->devargs);
-		port = doca_flow_dpdk_port_start(cfg, err);
+		port = doca_dpdk_port_start(cfg, err);
 		break;
 	default:
 		DOCA_LOG_ERR("unsupported port type");

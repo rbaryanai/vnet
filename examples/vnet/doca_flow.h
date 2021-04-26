@@ -198,7 +198,6 @@ struct doca_flow_fwd_table_cfg {
     };
 };
 
-
 struct doca_flow_monitor {
     uint8_t flags;
     bool count;

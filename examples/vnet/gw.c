@@ -237,12 +237,12 @@ static void gw_fill_monior(struct doca_flow_monitor *monitor)
 {
 	uint16_t idx, n_queues = 2; /*how to input rss queue*/
 	uint16_t *queues;
-	struct doca_fwd_table_cfg *fwd = &monitor->meter.fwd;
+	struct doca_flow_fwd_table_cfg *fwd = &monitor->m.fwd;
 
 	monitor->flags = DOCA_FLOW_COUNT;
 	monitor->flags |= DOCA_FLOW_METER;
-	monitor->meter.cir = 100 * 1000 / 8;
-	monitor->meter.cbs = monitor->meter.cir / 8;
+	monitor->m.cir = 100 * 1000 / 8;
+	monitor->m.cbs = monitor->m.cir / 8;
 
 	queues = malloc(sizeof(uint16_t) * n_queues);
 	for (idx = 1; idx < n_queues; idx++)/*queue 1 - n_queues*/
