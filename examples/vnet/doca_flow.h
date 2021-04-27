@@ -224,9 +224,14 @@ struct doca_flow_monitor {
  * @brief - pipeline definition
  */
 struct doca_flow_pipeline_cfg {
-	const char *name;
+        struct {
+            const char *name;
+            bool root; /* when true, first pipe executed on
+                          packet arrival */
+        };
 	struct doca_flow_port *port;
 	struct doca_flow_match *match;
+	struct doca_flow_match *match_mask;
 	struct doca_flow_actions *actions;
 	struct doca_flow_monitor *monitor;
 	bool count; /* count for entire pipe */
