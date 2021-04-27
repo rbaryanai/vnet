@@ -275,7 +275,7 @@ static struct doca_flow_pipeline *gw_build_ul_ol(struct doca_flow_port *port)
 	pipe_cfg.port = port;
 	pipe_cfg.match = &match;
 	pipe_cfg.actions = &actions;
-	pipe_cfg.monitor = &monitor;
+	//pipe_cfg.monitor = &monitor;
 	pipe_cfg.count = false;
 
 	return doca_flow_create_pipe(&pipe_cfg, NULL, &err);
@@ -314,7 +314,7 @@ static struct doca_flow_pipeline *gw_build_ol_to_ol(struct doca_flow_port *port)
 	pipe_cfg.port = port;
 	pipe_cfg.match = &match;
 	pipe_cfg.actions = &actions;
-	pipe_cfg.monitor = &monitor;
+	//pipe_cfg.monitor = &monitor;
 	pipe_cfg.count = false;
 
 	return doca_flow_create_pipe(&pipe_cfg, NULL, &err);
@@ -531,7 +531,8 @@ static int gw_init_doca_ports_and_pipes(int ret, int nr_queues)
 	struct gw_port_cfg cfg_port0 = {.n_queues = nr_queues, .port_id = 0};
 	struct gw_port_cfg cfg_port1 = {.n_queues = nr_queues, .port_id = 1};
 	struct doca_flow_error err = {0};
-	struct doca_flow_cfg cfg = {GW_MAX_FLOWS};
+	struct doca_flow_cfg cfg = {.total_sessions = GW_MAX_FLOWS,
+                                    .queues = nr_queues};
 
 	if (ret)
 		return ret;

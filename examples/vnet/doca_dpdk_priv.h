@@ -30,7 +30,7 @@ struct doca_flow_pipeline {
 	struct doca_flow_fwd fwd_tbl;
         struct doca_dpdk_pipeline flow;
 	rte_spinlock_t entry_lock;
-	LIST_HEAD(, doca_flow_pipeline_entry) entry_list;
+	LIST_HEAD(, doca_flow_pipeline_entry) entry_list[0];
 };
 
 struct doca_flow_port {

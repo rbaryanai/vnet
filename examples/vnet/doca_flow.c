@@ -41,7 +41,7 @@ struct doca_flow_pipeline_entry *doca_flow_pipeline_add_entry(
 	if (pipeline == NULL || match == NULL || actions == NULL || mon == NULL)
 		return NULL;
 	pipe_queue = pipe_queue;
-	return doca_dpdk_pipe_create_flow(pipeline, match, actions, mon,
+	return doca_dpdk_pipe_create_flow(pipeline, pipe_queue, match, actions, mon,
 					  (fwd != NULL)?fwd:&pipeline->fwd_tbl,
                                            err);
 }

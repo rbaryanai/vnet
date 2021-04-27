@@ -19,6 +19,8 @@ struct doca_dpdk_engine {
 	struct doca_id_pool *meter_profile_pool;
 };
 
+static struct doca_flow_cfg doca_flow_cfg = {0};
+
 struct doca_dpdk_engine doca_dpdk_engine;
 #define DOCA_FLOW_MAX_PORTS (128)
 static struct doca_flow_port *doca_dpdk_used_ports[DOCA_FLOW_MAX_PORTS];
@@ -33,6 +35,7 @@ void doca_dpdk_init(__rte_unused struct doca_flow_cfg *cfg)
 	doca_dpdk_engine.meter_profile_pool = doca_id_pool_create(&pool_cfg);
 	doca_dpdk_init_port(0);
 	doca_dpdk_init_port(1);
+        doca_flow_cfg = *cfg;
 }
 
 static int doca_dpdk_modify_eth_item(struct doca_dpdk_item_entry *entry,
@@ -1095,7 +1098,8 @@ static struct rte_flow *doca_dpdk_pipe_create_entry_flow(
 }
 
 struct doca_flow_pipeline_entry *doca_dpdk_pipe_create_flow(
-	struct doca_flow_pipeline *pipeline, struct doca_flow_match *match,
+	struct doca_flow_pipeline *pipeline, uint16_t pipe_queue,
+        struct doca_flow_match *match,
 	struct doca_flow_actions *actions, struct doca_flow_monitor *mon,
 	struct doca_flow_fwd *cfg, struct doca_flow_error *err)
 {
@@ -1115,7 +1119,7 @@ struct doca_flow_pipeline_entry *doca_dpdk_pipe_create_flow(
 	entry->id = pipeline->pipe_entry_id++;
 	rte_spinlock_lock(&pipeline->entry_lock);
 	pipeline->nb_pipe_entrys++;
-	LIST_INSERT_HEAD(&pipeline->entry_list, entry, next);
+	LIST_INSERT_HEAD(&pipeline->entry_list[pipe_queue], entry, next);
 	rte_spinlock_unlock(&pipeline->entry_lock);
 	DOCA_LOG_DBG("offload[%d]: pipeline=%p, match =%pi mod %p", entry->id,
 		     pipeline, match, actions);
@@ -1205,19 +1209,23 @@ doca_dpdk_create_pipe(struct doca_flow_pipeline_cfg *cfg,
 {
 	int ret;
 	uint32_t idx;
+        int i;
 	static uint32_t pipe_id = 1;
 	struct doca_flow_pipeline *pl;
 	struct doca_dpdk_pipeline *flow;
-
+        int pipeline_size = sizeof(struct doca_flow_pipeline) + 
+                            sizeof(LIST_HEAD(, doca_flow_pipeline_entry))*doca_flow_cfg.queues;
+        DOCA_LOG_ERR("queues - %d\n",doca_flow_cfg.queues);
 	DOCA_LOG_DBG("port:%u create pipe:%s\n", cfg->port->port_id, cfg->name);
 	doca_dump_flow_match(cfg->match);
 	doca_dump_flow_actions(cfg->actions);
-	pl = malloc(sizeof(struct doca_flow_pipeline));
+	pl = malloc(pipeline_size);
 	if (pl == NULL)
 		return NULL;
-	memset(pl, 0, sizeof(struct doca_flow_pipeline));
+	memset(pl, 0, pipeline_size);
 	strcpy(pl->name, cfg->name);
-	LIST_INIT(&pl->entry_list);
+        for ( i = 0; i < doca_flow_cfg.queues ; i++)
+            LIST_INIT(&pl->entry_list[i]);
 	rte_spinlock_init(&pl->entry_lock);
 	pl->id = pipe_id++;
 	flow = &pl->flow;
@@ -1294,15 +1302,18 @@ static void doca_dpdk_free_pipe(uint16_t portid,
 {
 	uint32_t meter_id, nb_pipe_entry = 0;
 	struct doca_flow_pipeline_entry *entry;
+        int i;
 
 	DOCA_LOG_INFO("portid:%u free pipeid:%u", portid, pipe->id);
 	rte_spinlock_lock(&pipe->entry_lock);
-	while ((entry = LIST_FIRST(&pipe->entry_list))) {
-		LIST_REMOVE(entry, next);
-		nb_pipe_entry++;
-		doca_dpdk_pipe_free_entry(portid, entry);
-		free(entry);
-	}
+        for ( i = 0; i < doca_flow_cfg.queues ; i++) {
+            while ((entry = LIST_FIRST(&pipe->entry_list[i]))) {
+                    LIST_REMOVE(entry, next);
+                    nb_pipe_entry++;
+                    doca_dpdk_pipe_free_entry(portid, entry);
+                    free(entry);
+            }
+        }
 	meter_id = pipe->flow.meter_info;
 	if (meter_id) { /*all flows delete, destroy meter rule*/
 		struct rte_mtr_error mtr_err;
