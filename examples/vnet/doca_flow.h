@@ -1,7 +1,7 @@
 /**
  * @brief
  *
- * GW has the following pipeline
+ * GW has the following pipe
  *
  * match:    modify    -->
  * - outer   - decap
@@ -20,15 +20,15 @@
  *      - ecmp
  *      - FIB
  *
- * Pipeline is a subset of the generic pipeline where
+ * Pipeline is a subset of the generic pipe where
  * none relevant fields are masked out, constant fields are
  * given a single value.
  *
  * Pipeline can support:
- *    - meter (entire traffic on pipeline)
+ *    - meter (entire traffic on pipe)
  *    - count
  *
- * Once a pipeline is defined (attached to port), pipeline
+ * Once a pipe is defined (attached to port), pipe
  * can be populated by entries, where only none masked/none constant
  * fields are provided.
  *
@@ -44,8 +44,8 @@
 #include "doca_net.h"
 
 struct doca_flow_port;
-struct doca_flow_pipeline;
-struct doca_flow_pipeline_entry;
+struct doca_flow_pipe;
+struct doca_flow_pipe_entry;
 
 /**
  * @brief :
@@ -96,7 +96,7 @@ struct doca_flow_port_cfg {
 
 /**
  * @brief - matcher
- *   - used for defintion of a pipeline
+ *   - used for defintion of a pipe
  *   - used for adding entry
  *     - only changeable fields are needed
  */
@@ -136,8 +136,8 @@ struct doca_flow_encap_action {
 
 /**
  * @brief - action template
- *    - used for defintion per pipeline
- *    - used when adding entries for a pipeline
+ *    - used for defintion per pipe
+ *    - used when adding entries for a pipe
  */
 struct doca_flow_actions {
 
@@ -197,8 +197,8 @@ struct doca_flow_fwd {
         } port;
 
         struct next_pipelne {
-            struct doca_flow_pipeline *next;
-        } next_pipeline;
+            struct doca_flow_pipe *next;
+        } next_pipe;
     };
 };
 
@@ -221,9 +221,9 @@ struct doca_flow_monitor {
 };
 
 /**
- * @brief - pipeline definition
+ * @brief - pipe definition
  */
-struct doca_flow_pipeline_cfg {
+struct doca_flow_pipe_cfg {
         struct {
             const char *name;
             bool root; /* when true, first pipe executed on
@@ -244,15 +244,15 @@ struct doca_flow_query {
 };
 
 /**
- * @brief - create a forwarding table that can be used in pipeline.
+ * @brief - create a forwarding table that can be used in pipe.
  *
  *
  * @param cfg
  *
  * @return
  */
-struct doca_flow_fwd_tbl *
-doca_flow_create_fwd_tbl(struct doca_flow_fwd *cfg);
+//struct doca_flow_fwd_tbl *
+//doca_flow_create_fwd_tbl(struct doca_flow_fwd *cfg);
 
 /**
  * @brief
@@ -266,7 +266,7 @@ doca_flow_create_fwd_tbl(struct doca_flow_fwd *cfg);
 int doca_flow_init(struct doca_flow_cfg *cfg, struct doca_flow_error *err);
 
 /**
- * @brief - start a doca port. doca ports are required to define pipelines.
+ * @brief - start a doca port. doca ports are required to define pipes.
  *          ports are also required for forwarding.
  *
  * @param cfg   - port configuration
@@ -299,23 +299,23 @@ int doca_flow_port_stop(struct doca_flow_port *port);
 uint8_t *doca_flow_port_priv_data(struct doca_flow_port *p);
 
 /**
- * @brief - create new pipeline.
+ * @brief - create new pipe.
  *
  * @param cfg
  * @param err    - err reason and message on failure
  *
- * @return pipeline handler or NULL on failure
+ * @return pipe handler or NULL on failure
  */
-struct doca_flow_pipeline *
-doca_flow_create_pipe(struct doca_flow_pipeline_cfg *cfg,
-                      struct doca_flow_fwd_tbl *fwd,
+struct doca_flow_pipe *
+doca_flow_create_pipe(struct doca_flow_pipe_cfg *cfg,
+                      struct doca_flow_fwd *fwd,
 		      struct doca_flow_error *err);
 
 /**
  * @brief
  *
  * @param pipe_queue  - each thread should use a unique id
- * @param pipeline
+ * @param pipe
  * @param match
  * @param actions
  * @param mod
@@ -324,14 +324,14 @@ doca_flow_create_pipe(struct doca_flow_pipeline_cfg *cfg,
  *
  * @return entry ref on success and NULL otherwise with reason filled in err.
  */
-struct doca_flow_pipeline_entry *doca_flow_pipeline_add_entry(
-	uint16_t pipe_queue, struct doca_flow_pipeline *pipeline,
+struct doca_flow_pipe_entry *doca_flow_pipe_add_entry(
+	uint16_t pipe_queue, struct doca_flow_pipe *pipe,
 	struct doca_flow_match *match, struct doca_flow_actions *actions,
 	struct doca_flow_monitor *mod, struct doca_flow_fwd *fwd,
 	struct doca_flow_error *err);
 
 /**
- * @brief - default pipeline is match all, and send to SW.
+ * @brief - default pipe is match all, and send to SW.
  *          RSS on all queues.
  *
  *          Using this flow it is allowed to change this behaviour and define
@@ -344,9 +344,9 @@ struct doca_flow_pipeline_entry *doca_flow_pipeline_add_entry(
  *
  * @return 0 on success and error reason for other
  */
-int doca_flow_pipeline_update_default(uint16_t pipe_queue,
+int doca_flow_pipe_update_default(uint16_t pipe_queue,
 				      struct doca_flow_port *port,
-				      struct doca_flow_fwd_tbl *fwd,
+				      struct doca_flow_fwd *fwd,
 				      struct doca_flow_error *err);
 
 /**
@@ -357,7 +357,7 @@ int doca_flow_pipeline_update_default(uint16_t pipe_queue,
  * @return
  */
 int doca_flow_rm_entry(uint16_t pipe_queue,
-		       struct doca_flow_pipeline_entry *entry);
+		       struct doca_flow_pipe_entry *entry);
 
 /**
  * @brief - extract information about specific entry
@@ -367,7 +367,7 @@ int doca_flow_rm_entry(uint16_t pipe_queue,
  *
  * @return 0 on success
  */
-int doca_flow_query(struct doca_flow_pipeline_entry *pe,
+int doca_flow_query(struct doca_flow_pipe_entry *pe,
 		    struct doca_flow_query *q);
 
 /**
@@ -381,11 +381,11 @@ int doca_flow_query(struct doca_flow_pipeline_entry *pe,
  *
  * @return true if there are more waiting entries for aging.
  */
-bool doca_flow_query_aging(struct doca_flow_pipeline_entry *arr, int arr_len,
+bool doca_flow_query_aging(struct doca_flow_pipe_entry *arr, int arr_len,
 			   int *n);
 
 void doca_flow_destroy(uint16_t port_id);
-void doca_flow_dump_pipeline(uint16_t port_id);
+void doca_flow_dump_pipe(uint16_t port_id);
 
-struct doca_flow_fwd *doca_flow_fwd_cast(struct doca_flow_fwd_tbl *tbl);
+//struct doca_flow_fwd *doca_flow_fwd_cast(struct doca_flow_fwd_tbl *tbl);
 #endif

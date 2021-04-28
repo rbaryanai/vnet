@@ -78,9 +78,9 @@ struct ex_gw {
 
 	/* for classificaiton purpose */
 	struct gw_ipv4_match cls_match[GW_MAX_PIPE_CLS];
-	/* pipelines */
-	struct doca_flow_pipeline *p_over_under[GW_NUM_OF_PORTS];
-	struct doca_flow_pipeline *p_ol_ol[GW_NUM_OF_PORTS];
+	/* pipes */
+	struct doca_flow_pipe *p_over_under[GW_NUM_OF_PORTS];
+	struct doca_flow_pipe *p_ol_ol[GW_NUM_OF_PORTS];
 };
 
 struct gw_entry {
@@ -88,7 +88,7 @@ struct gw_entry {
 	int total_bytes;
 	enum gw_classification cls;
 	bool is_hw;
-	struct doca_flow_pipeline_entry *hw_entry;
+	struct doca_flow_pipe_entry *hw_entry;
 };
 
 struct ex_gw *gw_ins;
@@ -115,32 +115,34 @@ static uint16_t gw_slb_peer_port(uint16_t port_id)
 	return port_id == 0 ? 1 : 0;
 }
 
-struct doca_flow_fwd_tbl *sw_rss_fwd_tbl_port[GW_MAX_PORT_ID];
-struct doca_flow_fwd_tbl *fwd_tbl_port[GW_MAX_PORT_ID];
+struct doca_flow_fwd *sw_rss_fwd_tbl_port[GW_MAX_PORT_ID];
+struct doca_flow_fwd *fwd_tbl_port[GW_MAX_PORT_ID];
 
-static struct doca_flow_fwd_tbl *gw_build_port_fwd(int port_id)
+static struct doca_flow_fwd *gw_build_port_fwd(int port_id)
 {
-	struct doca_flow_fwd cfg = {.type = DOCA_FWD_PORT};
-
-	cfg.port.id = port_id;
-	return doca_flow_create_fwd_tbl(&cfg);
+        struct doca_flow_fwd *fwd = malloc(sizeof(struct doca_flow_fwd));
+        memset(fwd,0,sizeof(struct doca_flow_fwd));
+        fwd->type = DOCA_FWD_PORT;
+	fwd->port.id = port_id;
+	return fwd;
 }
 
 /*RSS not include core0, for n_queue: 1 - n_queue*/
-static struct doca_flow_fwd_tbl *gw_build_rss_fwd(int n_queues)
+static struct doca_flow_fwd *gw_build_rss_fwd(int n_queues)
 {
 	int i;
-	struct doca_flow_fwd cfg = {0};
+        struct doca_flow_fwd *fwd = malloc(sizeof(struct doca_flow_fwd));
 	uint16_t *queues;
+        memset(fwd,0,sizeof(struct doca_flow_fwd));
 
 	queues = malloc(sizeof(uint16_t) * n_queues);
 	for (i = 1; i < n_queues; i++)
 		queues[i - 1] = i;
-	cfg.type = DOCA_FWD_RSS;
-	cfg.rss.queues = queues;
-	cfg.rss.rss_flags = DOCA_RSS_IP | DOCA_RSS_UDP | DOCA_RSS_IP;
-	cfg.rss.num_queues = n_queues - 1;
-	return doca_flow_create_fwd_tbl(&cfg);
+	fwd->type = DOCA_FWD_RSS;
+	fwd->rss.queues = queues;
+	fwd->rss.rss_flags = DOCA_RSS_IP | DOCA_RSS_UDP | DOCA_RSS_IP;
+	fwd->rss.num_queues = n_queues - 1;
+	return fwd;
 }
 
 static void gw_build_tun_match(struct doca_flow_match *match)
@@ -243,12 +245,12 @@ static void gw_fill_monior(struct doca_flow_monitor *monitor)
 }
 
 /**
- * @brief - build the underlay to overlay pipeline
+ * @brief - build the underlay to overlay pipe
  *          match: (ip,tun),(5 tuple)
  *          actions: - decap
  *                   - change dst ip
  *          monitor: - count
- * configure a pipeline. values of 0 means the parameters
+ * configure a pipe. values of 0 means the parameters
  * will not be used. mask means for each entry a value should be provided
  * a real value means a constant value and should not be added on any entry
  * added
@@ -257,9 +259,9 @@ static void gw_fill_monior(struct doca_flow_monitor *monitor)
  *
  * @return
  */
-static struct doca_flow_pipeline *gw_build_ul_ol(struct doca_flow_port *port)
+static struct doca_flow_pipe *gw_build_ul_ol(struct doca_flow_port *port)
 {
-	struct doca_flow_pipeline_cfg pipe_cfg = {0};
+	struct doca_flow_pipe_cfg pipe_cfg = {0};
 	struct doca_flow_error err = {0};
 	struct doca_flow_match match;
 	struct doca_flow_actions actions = {0};
@@ -288,7 +290,7 @@ static struct doca_flow_pipeline *gw_build_ul_ol(struct doca_flow_port *port)
  *                 encap (according to serving node)
  *                 monitor count
  *
- * configure a pipeline. values of 0 means the parameters
+ * configure a pipe. values of 0 means the parameters
  * // will not be used. mask means for each entry a value should be provided
  * // a real value means a constant value and should not be added on any entry
  * // added
@@ -296,9 +298,9 @@ static struct doca_flow_pipeline *gw_build_ul_ol(struct doca_flow_port *port)
  *
  * @return
  */
-static struct doca_flow_pipeline *gw_build_ol_to_ol(struct doca_flow_port *port)
+static struct doca_flow_pipe *gw_build_ol_to_ol(struct doca_flow_port *port)
 {
-	struct doca_flow_pipeline_cfg pipe_cfg = {0};
+	struct doca_flow_pipe_cfg pipe_cfg = {0};
 	struct doca_flow_error err = {0};
 	struct doca_flow_match match;
 	struct doca_flow_actions actions = {0};
@@ -322,7 +324,7 @@ static struct doca_flow_pipeline *gw_build_ol_to_ol(struct doca_flow_port *port)
 
 /**
  * @brief - decides about the type of the packet.
- *  which pipeline should be exeuted.
+ *  which pipe should be exeuted.
  *
  *  if port 0 to port 1 and dst ip = 13.0.0.0/24 overlay to overlay
  *
@@ -386,7 +388,7 @@ struct doca_flow_port *gw_init_doca_port(struct gw_port_cfg *port_cfg)
 	return port;
 }
 
-static void gw_pipeline_set_entry_tun(struct doca_flow_match *match,
+static void gw_pipe_set_entry_tun(struct doca_flow_match *match,
 				      struct doca_pkt_info *pinfo)
 {
 	switch (gw_tun_type) {
@@ -404,16 +406,16 @@ static void gw_pipeline_set_entry_tun(struct doca_flow_match *match,
 }
 
 /**
- * @brief - create entry on overlay to underlay pipeline
+ * @brief - create entry on overlay to underlay pipe
  *
  * @param pinfo
- * @param pipeline
+ * @param pipe
  *
  * @return
  */
-struct doca_flow_pipeline_entry *
-gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_info *pinfo,
-			       struct doca_flow_pipeline *pipeline)
+struct doca_flow_pipe_entry *
+gw_pipe_add_ol_to_ul_entry(struct doca_pkt_info *pinfo,
+			       struct doca_flow_pipe *pipe)
 {
 	struct doca_flow_match match;
 	struct doca_flow_actions actions = {0};
@@ -429,7 +431,7 @@ gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_info *pinfo,
 	memset(&match, 0x0, sizeof(match));
 	/* exact match on dst ip and vni */
 	match.out_dst_ip.a.ipv4_addr = doca_pinfo_outer_ipv4_dst(pinfo);
-	gw_pipeline_set_entry_tun(&match, pinfo);
+	gw_pipe_set_entry_tun(&match, pinfo);
 
 	/* exact inner 5-tuple */
 	match.in_dst_ip.a.ipv4_addr = doca_pinfo_inner_ipv4_dst(pinfo);
@@ -441,14 +443,14 @@ gw_pipeline_add_ol_to_ul_entry(struct doca_pkt_info *pinfo,
 	actions.mod_dst_ip.a.ipv4_addr =
 	    (doca_pinfo_inner_ipv4_dst(pinfo) & rte_cpu_to_be_32(0x00ffffff)) |
 	    rte_cpu_to_be_32(0x25000000);
-	return doca_flow_pipeline_add_entry(
-	    0, pipeline, &match, &actions, &monitor,
-	    doca_flow_fwd_cast(sw_rss_fwd_tbl_port[pinfo->orig_port_id]), &err);
+	return doca_flow_pipe_add_entry(
+	    0, pipe, &match, &actions, &monitor,
+	    sw_rss_fwd_tbl_port[pinfo->orig_port_id], &err);
 }
 
-struct doca_flow_pipeline_entry *
-gw_pipeline_add_ol_to_ol_entry(struct doca_pkt_info *pinfo,
-			       struct doca_flow_pipeline *pipeline)
+struct doca_flow_pipe_entry *
+gw_pipe_add_ol_to_ol_entry(struct doca_pkt_info *pinfo,
+			       struct doca_flow_pipe *pipe)
 {
 	struct doca_flow_match match;
 	struct doca_flow_actions actions = {0};
@@ -463,7 +465,7 @@ gw_pipeline_add_ol_to_ol_entry(struct doca_pkt_info *pinfo,
 	memset(&match, 0x0, sizeof(match));
 	/* exact match on dst ip and vni */
 	match.out_dst_ip.a.ipv4_addr = doca_pinfo_outer_ipv4_dst(pinfo);
-	gw_pipeline_set_entry_tun(&match, pinfo);
+	gw_pipe_set_entry_tun(&match, pinfo);
 
 	/* exact inner 5-tuple */
 	match.in_dst_ip.a.ipv4_addr = doca_pinfo_inner_ipv4_dst(pinfo);
@@ -490,13 +492,13 @@ gw_pipeline_add_ol_to_ol_entry(struct doca_pkt_info *pinfo,
 	}
 	/* add src port mac*/
 	memset(actions.encap.src_mac, 0xff, sizeof(actions.encap.src_mac));
-	return doca_flow_pipeline_add_entry(
-	    0, pipeline, &match, &actions, &monitor,
-	    doca_flow_fwd_cast(fwd_tbl_port[gw_slb_peer_port(pinfo->orig_port_id)]),
+	return doca_flow_pipe_add_entry(
+	    0, pipe, &match, &actions, &monitor,
+	    fwd_tbl_port[gw_slb_peer_port(pinfo->orig_port_id)],
             &err);
 }
 
-void gw_rm_pipeline_entry(struct doca_flow_pipeline_entry *entry)
+void gw_rm_pipe_entry(struct doca_flow_pipe_entry *entry)
 {
 	doca_flow_rm_entry(0, entry);
 }
@@ -562,8 +564,8 @@ static int gw_init_doca_ports_and_pipes(int ret, int nr_queues)
 	GW_FILL_MATCH(gw_ins->cls_match[3], "0.0.0.0", 4, APP_TUN_NONE, 0,
 		      GW_BYPASS_L4);
 
-	/* init pipelines */
-	/* overlay to under lay pipeline */
+	/* init pipes */
+	/* overlay to under lay pipe */
 	gw_ins->p_over_under[0] = gw_build_ul_ol(gw_ins->port0);
 	gw_ins->p_over_under[1] = gw_build_ul_ol(gw_ins->port1);
 
@@ -631,7 +633,7 @@ static void gw_aged_flow_cb(struct doca_ft_user_ctx *ctx)
 	struct gw_entry *entry = (struct gw_entry *)&ctx->data[0];
 
 	if (entry->is_hw) {
-		gw_rm_pipeline_entry(entry->hw_entry);
+		gw_rm_pipe_entry(entry->hw_entry);
 		entry->hw_entry = NULL;
 	}
 }
@@ -657,7 +659,7 @@ static int gw_handle_new_flow(struct doca_pkt_info *pinfo,
 			return -1;
 		}
 		entry = (struct gw_entry *)&(*ctx)->data[0];
-		entry->hw_entry = gw_pipeline_add_ol_to_ul_entry(
+		entry->hw_entry = gw_pipe_add_ol_to_ul_entry(
 		    pinfo, gw_ins->p_over_under[pinfo->orig_port_id]);
 		if (entry->hw_entry == NULL) {
 			DOCA_LOG_DBG("failed to offload");
@@ -672,7 +674,7 @@ static int gw_handle_new_flow(struct doca_pkt_info *pinfo,
 			return -1;
 		}
 		entry = (struct gw_entry *)&(*ctx)->data[0];
-		entry->hw_entry = gw_pipeline_add_ol_to_ol_entry(
+		entry->hw_entry = gw_pipe_add_ol_to_ol_entry(
 		    pinfo, gw_ins->p_over_under[pinfo->orig_port_id]);
 		if (entry->hw_entry == NULL) {
 			DOCA_LOG_DBG("failed to offload");
@@ -681,7 +683,7 @@ static int gw_handle_new_flow(struct doca_pkt_info *pinfo,
 		entry->is_hw = true;
 		break;
 	case GW_BYPASS_L4:
-		DOCA_LOG_DBG("adding entry no pipeline");
+		DOCA_LOG_DBG("adding entry no pipe");
 		if (!doca_ft_add_new(gw_ins->ft, pinfo, ctx)) {
 			DOCA_LOG_DBG("failed create new entry");
 			return -1;

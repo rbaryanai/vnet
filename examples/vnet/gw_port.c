@@ -243,7 +243,7 @@ void gw_dump_port_stats(uint16_t port_id)
 	const char topLeft[] = {27, '[', '1', ';', '1', 'H', '\0'};
 
 	printf("%s%s", clr, topLeft);
-	doca_flow_dump_pipeline(port_id);
+	doca_flow_dump_pipe(port_id);
 	gw_port_stats_display(port_id);
 	fflush(stdout);
 }
