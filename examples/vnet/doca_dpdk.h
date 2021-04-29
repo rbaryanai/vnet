@@ -195,7 +195,7 @@ struct doca_dpdk_pipe_list {
 
 struct endecap_layer {
 	uint16_t layer;
-	void (*fill_data)(uint8_t **, struct doca_flow_pipe_cfg *);
+	void (*fill_data)(uint8_t **, struct doca_flow_pipe_cfg *, uint8_t );
 };
 
 enum DOCA_DECAP_HDR {
@@ -205,6 +205,12 @@ enum DOCA_DECAP_HDR {
 	FILL_VXLAN_HDR = (1 << 3),
 	FILL_GRE_HDR = (1 << 4),
 };
+
+enum DOCA_DECAP_TYPE {
+	DOCA_ENCAP,
+	DOCA_DECAP,
+};
+
 
 /*need move to util file ??*/
 static inline bool doca_is_mac_zero(void *mac_addr)
