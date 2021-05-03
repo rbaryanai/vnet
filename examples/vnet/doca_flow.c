@@ -38,12 +38,11 @@ struct doca_flow_pipe_entry *doca_flow_pipe_add_entry(
 	struct doca_flow_monitor *mon, struct doca_flow_fwd *fwd,
 	struct doca_flow_error *err)
 {
-	if (pipe == NULL || match == NULL || actions == NULL || mon == NULL)
+	if (pipe == NULL || match == NULL || actions == NULL)
 		return NULL;
 	pipe_queue = pipe_queue;
 	return doca_dpdk_pipe_create_flow(pipe, pipe_queue, match, actions, mon,
-					  (fwd != NULL)?fwd:&pipe->fwd,
-                                           err);
+	                                  fwd, err);
 }
 
 int doca_flow_rm_entry(uint16_t pipe_queue,
