@@ -193,7 +193,7 @@ struct doca_flow_fwd {
         } rss;
 
         struct port {
-                int id;
+                uint16_t id;
         } port;
 
         struct next_pipelne {
