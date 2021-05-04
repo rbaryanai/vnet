@@ -1263,8 +1263,8 @@ static int doca_dpdk_create_pipe_flow(struct doca_dpdk_pipe *flow,
 
 struct doca_flow_pipe *
 doca_dpdk_create_pipe(struct doca_flow_pipe_cfg *cfg,
-                        struct doca_flow_fwd *fwd,
-                        struct doca_flow_error *err)
+                      struct doca_flow_fwd *fwd,
+                      struct doca_flow_error *err)
 {
 	int ret;
 	uint32_t idx;
