@@ -9,6 +9,7 @@
 #include "gw_port.h"
 #include "doca_log.h"
 #include "doca_flow.h"
+#include "simple_fwd.h"
 
 DOCA_LOG_MODULE(gw_port);
 

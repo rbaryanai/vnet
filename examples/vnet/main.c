@@ -35,6 +35,7 @@
 #include "doca_ft.h"
 #include "gw_port.h"
 #include "doca_vnf.h"
+#include "simple_fwd.h"
 
 DOCA_LOG_MODULE(main);
 
