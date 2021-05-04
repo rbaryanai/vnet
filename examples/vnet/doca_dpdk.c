@@ -765,7 +765,7 @@ static int doca_dpdk_build_modify_action(struct doca_flow_pipe_cfg *cfg,
 static void doca_dpdk_build_end_action(struct doca_dpdk_pipe *pipe)
 {
 	struct rte_flow_action *action =
-	    &pipe->actions[pipe->nb_actions_entry++];
+	    &pipe->actions[pipe->nb_actions_entry];
 	action->type = RTE_FLOW_ACTION_TYPE_END;
 }
 
