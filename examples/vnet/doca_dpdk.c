@@ -1380,8 +1380,8 @@ static void doca_dpdk_free_pipe(uint16_t portid,
 	if (meter_id) { /*all flows delete, destroy meter rule*/
 		struct rte_mtr_error mtr_err;
 
-		rte_mtr_meter_policy_delete(portid, meter_id, &mtr_err);
-		rte_mtr_meter_profile_delete(portid, meter_id, &mtr_err);
+		//rte_mtr_meter_policy_delete(portid, meter_id, &mtr_err);
+		//rte_mtr_meter_profile_delete(portid, meter_id, &mtr_err);
 	}
 	rte_spinlock_unlock(&pipe->entry_lock);
 	free(pipe);
