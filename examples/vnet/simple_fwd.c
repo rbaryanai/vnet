@@ -141,25 +141,6 @@ build_match_tunnel_5tuple(struct doca_flow_match *match)
 	match->in_dst_port = 0xffff;
 }
 
-static void
-build_action_decap(struct doca_flow_actions *actions)
-{
-	actions->decap = true;
-}
-
-static void 
-build_action_encap(struct doca_flow_actions *actions)
-{
-	actions->encap.in_src_ip.a.ipv4_addr =
-	    doca_inline_parse_ipv4("111.168.1.1");
-	actions->encap.in_dst_ip.a.ipv4_addr = 0xffffffff;
-
-	memset(actions->encap.src_mac, 0xff, sizeof(actions->encap.src_mac));
-	memset(actions->encap.dst_mac, 0xff, sizeof(actions->encap.src_mac));
-
-	actions->encap.tun.type = DOCA_TUN_VXLAN;
-	actions->encap.tun.vxlan.tun_id = 0xffffffff;
-}
 static void build_match_5tuple(struct doca_flow_match *match)
 {
     match->out_dst_ip.a.ipv4_addr = 0xffffffff;
@@ -171,6 +152,44 @@ static void build_match_5tuple(struct doca_flow_match *match)
     match->out_dst_port = 0xffff;
 }
 
+static void build_match_tun_and_5tuple(struct doca_flow_match *match)
+{
+	match->out_dst_ip.a.ipv4_addr = 0xffffffff;
+	match->out_dst_ip.type = DOCA_IPV4;
+
+	match->out_l4_type = IPPROTO_UDP;
+	match->out_dst_port = rte_cpu_to_be_16(
+	    DOCA_VXLAN_DEFAULT_PORT);
+	match->tun.type = DOCA_TUN_VXLAN;
+	match->tun.vxlan.tun_id = 0xffffffff;
+
+	match->in_dst_ip.a.ipv4_addr = 0xffffffff;
+	match->in_src_ip.a.ipv4_addr = 0xffffffff;
+	match->in_src_ip.type = DOCA_IPV4;
+	match->in_l4_type = 0x6;
+
+	match->in_src_port = 0xffff;
+	match->in_dst_port = 0xffff;
+}
+
+static void build_decap_action(struct doca_flow_actions *actions)
+{
+	actions->decap = true;
+}
+
+static void build_encap_action(struct doca_flow_actions *actions)
+{
+	actions->has_encap = true;
+	actions->encap.in_src_ip.a.ipv4_addr =
+	    doca_inline_parse_ipv4("111.168.1.2");
+	actions->encap.in_dst_ip.a.ipv4_addr = 0xffffffff;
+
+	memset(actions->encap.src_mac, 0xff, sizeof(actions->encap.src_mac));
+	memset(actions->encap.dst_mac, 0xff, sizeof(actions->encap.src_mac));
+
+	actions->encap.tun.type = DOCA_TUN_VXLAN;
+	actions->encap.tun.vxlan.tun_id = 0xffffffff;
+}
 
 static struct doca_flow_pipe *
 build_fwd_pipe(struct doca_flow_port *port,uint16_t fwd_port_id)
@@ -182,10 +201,10 @@ build_fwd_pipe(struct doca_flow_port *port,uint16_t fwd_port_id)
 //    struct doca_flow_fwd fwd;
         
 	memset(&match, 0x0, sizeof(match));
-    build_match_5tuple(&match);
-//	build_match_tunnel_5tuple(&match);
-//    build_action_decap(&actions);
-//    build_action_encap(&actions);
+    //build_match_5tuple(&match);
+	build_match_tun_and_5tuple(&match);
+    build_decap_action(&actions);
+    build_encap_action(&actions);
 
 	pipe_cfg.name = "FWD";
 	pipe_cfg.port = port;
@@ -267,6 +286,15 @@ sf_pipe_add_entry(struct doca_pkt_info *pinfo,
 	match.out_l4_type = pinfo->outer.l4_type;
 	match.out_src_port = doca_pinfo_outer_src_port(pinfo);
 	match.out_dst_port = doca_pinfo_outer_dst_port(pinfo);
+
+	match.tun.vxlan.tun_id = pinfo->tun.vni;
+
+	match.in_dst_ip.a.ipv4_addr = doca_pinfo_inner_ipv4_dst(pinfo);
+	match.in_src_ip.a.ipv4_addr = doca_pinfo_inner_ipv4_src(pinfo);
+	match.in_l4_type = pinfo->inner.l4_type;
+	match.in_src_port = doca_pinfo_inner_src_port(pinfo);
+	match.in_dst_port = doca_pinfo_inner_dst_port(pinfo);
+
 
 	return doca_flow_pipe_add_entry(0, pipe, &match, &actions, NULL,
                             	    fwd_tbl_port[pinfo->orig_port_id], &err);
