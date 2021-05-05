@@ -850,7 +850,7 @@ static int doca_dpdk_build_fwd(struct doca_dpdk_pipe *pipe,
 {
 	struct doca_dpdk_action_entry *action_entry;
 
-	action_entry = &pipe->action_entry[pipe->nb_actions_entry];
+	action_entry = &pipe->action_entry[pipe->nb_actions_pipe];
 	/* if we already create the forward action don't do it again */
 	if (action_entry->action->type == RTE_FLOW_ACTION_TYPE_QUEUE ||
 		action_entry->action->type == RTE_FLOW_ACTION_TYPE_PORT_ID ||
@@ -868,7 +868,7 @@ static int doca_dpdk_build_fwd(struct doca_dpdk_pipe *pipe,
 	default:
 		return 1;
 	}
-	pipe->nb_actions_entry++;
+	pipe->nb_actions_pipe++;
 	return 0;
 }
 
@@ -1258,6 +1258,7 @@ int doca_dpdk_init_port(uint16_t port_id)
  */
 static int doca_dpdk_create_pipe_flow(struct doca_dpdk_pipe *flow,
 				      struct doca_flow_pipe_cfg *cfg,
+					  struct doca_flow_fwd *fwd,
 				      struct doca_flow_error *err)
 {
 	int ret;
@@ -1282,6 +1283,11 @@ static int doca_dpdk_create_pipe_flow(struct doca_dpdk_pipe *flow,
 			return -1;
 		}
 	}
+	if (fwd && fwd->type == DOCA_FWD_PORT)
+	{
+	    doca_dpdk_build_fwd(flow, fwd);
+	}
+
 	doca_dump_rte_flow("create pipe:", flow->port_id, &flow->attr,
 			   flow->items, flow->actions);
 	return 0;
@@ -1317,11 +1323,7 @@ doca_dpdk_create_pipe(struct doca_flow_pipe_cfg *cfg,
 		flow->item_entry[idx].item = &pl->flow.items[idx];
 	for (idx = 0; idx < MAX_ACTIONS; idx++)
 		flow->action_entry[idx].action = &pl->flow.actions[idx];
-    if (fwd && fwd->type == DOCA_FWD_PORT)
-    {
-        doca_dpdk_build_fwd(flow, fwd);
-    }
-	ret = doca_dpdk_create_pipe_flow(flow, cfg, err);
+	ret = doca_dpdk_create_pipe_flow(flow, cfg, fwd, err);
 	if (ret) {
 		free(pl);
 		return NULL;
