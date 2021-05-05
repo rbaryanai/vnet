@@ -12,6 +12,8 @@ enum {
 
 #define doca_log_buff(fmt, args...)                                            \
 	sprintf(dump_buff + strlen(dump_buff), fmt, ##args)
+#define doca_log_prefix_buff(fmt, args...)                                            \
+	sprintf(prefix_buff + strlen(prefix_buff), fmt, ##args)
 #define doca_log_ipv4(item, ipv4_addr)                                         \
 	doca_log_buff("%s%d.%d.%d.%d ", item, (ipv4_addr >> 24) & 0xFF,        \
 		      (ipv4_addr >> 16) & 0xFF, (ipv4_addr >> 8) & 0xFF,       \

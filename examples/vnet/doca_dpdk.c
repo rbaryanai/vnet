@@ -476,22 +476,24 @@ static int doca_dpdk_build_item(struct doca_flow_match *match,
 	is encap buffer fixed or will be modifid by packet info?
 */
 static void doca_dpdk_build_ether_header(uint8_t **header,
-					 struct doca_flow_pipe_cfg *cfg)
+					 struct doca_flow_pipe_cfg *cfg, uint8_t type)
 {
 	struct rte_ether_hdr eth_hdr;
 	struct doca_flow_match *match = cfg->match;
 
 	memset(&eth_hdr, 0, sizeof(struct rte_ether_hdr));
-	if (!doca_is_mac_zero(match->out_dst_mac))
-		rte_ether_addr_copy(
-		    (const struct rte_ether_addr *)match->out_src_mac,
-		    &eth_hdr.s_addr);
-	if (!doca_is_mac_zero(match->out_src_mac))
-		rte_ether_addr_copy(
-		    (const struct rte_ether_addr *)match->out_src_mac,
-		    &eth_hdr.d_addr);
-	eth_hdr.ether_type = doca_dpdk_get_l3_protol(match, OUTER_MATCH);
-	memcpy(*header, &eth_hdr, sizeof(eth_hdr));
+	if (type == DOCA_ENCAP) {
+		if (!doca_is_mac_zero(match->out_dst_mac))
+			rte_ether_addr_copy(
+				(const struct rte_ether_addr *)match->out_src_mac,
+				&eth_hdr.s_addr);
+		if (!doca_is_mac_zero(match->out_src_mac))
+			rte_ether_addr_copy(
+				(const struct rte_ether_addr *)match->out_src_mac,
+				&eth_hdr.d_addr);
+		eth_hdr.ether_type = doca_dpdk_get_l3_protol(match, OUTER_MATCH);
+		memcpy(*header, &eth_hdr, sizeof(eth_hdr));
+	}
 	*header += sizeof(eth_hdr);
 	if (match->vlan_id) {
 		struct rte_vlan_hdr vlan;
@@ -503,7 +505,7 @@ static void doca_dpdk_build_ether_header(uint8_t **header,
 
 static void
 doca_dpdk_build_ipv4_header(uint8_t **header,
-			    __rte_unused struct doca_flow_pipe_cfg *cfg)
+			    __rte_unused struct doca_flow_pipe_cfg *cfg, __rte_unused uint8_t type)
 {
 	struct rte_ipv4_hdr ipv4_hdr;
 
@@ -519,7 +521,7 @@ doca_dpdk_build_ipv4_header(uint8_t **header,
 }
 
 static void doca_dpdk_build_udp_header(uint8_t **header,
-				       struct doca_flow_pipe_cfg *cfg)
+				       struct doca_flow_pipe_cfg *cfg, __rte_unused uint8_t type)
 {
 	struct rte_udp_hdr udp_hdr;
 
@@ -533,7 +535,7 @@ static void doca_dpdk_build_udp_header(uint8_t **header,
 }
 
 static void doca_dpdk_build_vxlan_header(uint8_t **header,
-					 struct doca_flow_pipe_cfg *cfg)
+					 struct doca_flow_pipe_cfg *cfg, __rte_unused uint8_t type)
 {
 	struct rte_vxlan_hdr vxlan_hdr;
 
@@ -545,15 +547,17 @@ static void doca_dpdk_build_vxlan_header(uint8_t **header,
 }
 
 static void doca_dpdk_build_gre_header(uint8_t **header,
-				       struct doca_flow_pipe_cfg *cfg)
+				       struct doca_flow_pipe_cfg *cfg, uint8_t type)
 {
 	uint32_t *key_data;
 	struct rte_gre_hdr gre_hdr;
 
 	memset(&gre_hdr, 0, sizeof(struct rte_gre_hdr));
-	gre_hdr.k = 1;
-	gre_hdr.proto = doca_dpdk_get_l3_protol(cfg->match, INNER_MATCH);
-	memcpy(*header, &gre_hdr, sizeof(gre_hdr));
+	if (type == DOCA_ENCAP) {
+		gre_hdr.k = 1;
+		gre_hdr.proto = doca_dpdk_get_l3_protol(cfg->match, INNER_MATCH);
+		memcpy(*header, &gre_hdr, sizeof(gre_hdr));
+	}
 	*header += sizeof(gre_hdr);
 	key_data = (uint32_t *)(*header);
 	*key_data = cfg->match->tun.gre.key;
@@ -568,9 +572,9 @@ struct endecap_layer doca_endecap_layers[] = {
 	{FILL_GRE_HDR, doca_dpdk_build_gre_header},
 };
 
-static void doca_dpdk_build_endecap_data(uint8_t **header,
+static void doca_dpdk_build_raw_data(uint8_t **header,
 					 struct doca_flow_pipe_cfg *cfg,
-					 uint16_t flags)
+					 uint16_t flags, uint8_t type)
 {
 	uint8_t idx;
 	struct endecap_layer *layer;
@@ -578,13 +582,28 @@ static void doca_dpdk_build_endecap_data(uint8_t **header,
 	for (idx = 0; idx < RTE_DIM(doca_endecap_layers); idx++) {
 		layer = &doca_endecap_layers[idx];
 		if (flags & layer->layer)
-			layer->fill_data(header, cfg);
+			layer->fill_data(header, cfg, type);
 	}
 }
 
+static void doca_dpdk_build_encap_action(struct doca_dpdk_action_entry *entry,
+										 struct doca_flow_pipe_cfg *cfg, uint8_t layer)
+{
+	uint8_t *header;
+	struct rte_flow_action *action = entry->action;
+	struct doca_dpdk_action_rawencap_data *encap;
+
+	encap = &entry->action_data.rawencap;
+	header = encap->data;
+	doca_dpdk_build_raw_data(&header, cfg, layer, DOCA_ENCAP);
+	encap->conf.data = encap->data;
+	encap->conf.size = header - encap->data;
+	action->type = RTE_FLOW_ACTION_TYPE_RAW_ENCAP;
+	action->conf = &encap->conf;
+}
+
 static void doca_dpdk_build_decap_action(struct doca_dpdk_action_entry *entry,
-					 struct doca_flow_pipe_cfg *cfg,
-					 uint8_t decap_layer)
+					 struct doca_flow_pipe_cfg *cfg, uint8_t layer)
 {
 	uint8_t *header;
 	struct rte_flow_action *action = entry->action;
@@ -592,15 +611,15 @@ static void doca_dpdk_build_decap_action(struct doca_dpdk_action_entry *entry,
 
 	decap = &entry->action_data.rawdecap;
 	header = decap->data;
-	doca_dpdk_build_endecap_data(&header, cfg, decap_layer);
+	doca_dpdk_build_raw_data(&header, cfg, layer, DOCA_DECAP);
 	decap->conf.data = decap->data;
 	decap->conf.size = header - decap->data;
 	action->type = RTE_FLOW_ACTION_TYPE_RAW_DECAP;
 	action->conf = &decap->conf;
 }
 
-static int doca_dpdk_build_tunnel_action(struct doca_dpdk_action_entry *entry,
-					 struct doca_flow_pipe_cfg *cfg)
+static int doca_dpdk_build_decap(struct doca_dpdk_action_entry *entry,
+	                             struct doca_flow_pipe_cfg *cfg)
 {
 	uint8_t layer;
 	struct doca_flow_match *match = cfg->match;
@@ -743,7 +762,7 @@ static int doca_dpdk_build_modify_action(struct doca_flow_pipe_cfg *cfg,
 	struct doca_flow_actions *actions = cfg->actions;
 
 	if (actions->decap && match->tun.type)
-		ret = doca_dpdk_build_tunnel_action(NEXT_ACTION, cfg);
+		ret = doca_dpdk_build_decap(NEXT_ACTION,cfg);
 	if (!doca_is_mac_zero(actions->mod_src_mac))
 		doca_dpdk_build_mac_action(NEXT_ACTION, cfg, DOCA_SRC);
 	if (!doca_is_mac_zero(actions->mod_dst_mac))
@@ -758,6 +777,13 @@ static int doca_dpdk_build_modify_action(struct doca_flow_pipe_cfg *cfg,
 		doca_dpdk_build_l4_port_action(NEXT_ACTION, cfg, DOCA_DST);
 	if (actions->dec_ttl)
 		doca_dpdk_build_dec_ttl_action(NEXT_ACTION);
+	if (actions->has_encap) {
+		uint8_t layer;
+
+		layer = FILL_ETH_HDR | FILL_IPV4_HDR | FILL_UDP_HDR |
+        FILL_VXLAN_HDR;
+		doca_dpdk_build_encap_action(NEXT_ACTION, cfg, layer);
+	}
 	pipe_flow->nb_actions_pipe = idx;
 	return ret;
 }

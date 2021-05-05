@@ -157,6 +157,7 @@ struct doca_flow_actions {
 	uint32_t tcp_seq_shift;
 	uint32_t tcp_ack_shift;
 
+	bool has_encap;
 	struct doca_flow_encap_action encap;
 };
 

@@ -27,6 +27,11 @@ enum ACTION_DIRECTION {
 	DOCA_DST,
 };
 
+enum DOCA_TUNNEL_ACTION_TYPE {
+	DOCA_ENCAP,
+	DOCA_DECAP,
+};
+
 struct doca_dpdk_item_eth_data {
 	struct rte_flow_item_eth spec;
 	struct rte_flow_item_eth last;
@@ -195,7 +200,7 @@ struct doca_dpdk_pipe_list {
 
 struct endecap_layer {
 	uint16_t layer;
-	void (*fill_data)(uint8_t **, struct doca_flow_pipe_cfg *);
+	void (*fill_data)(uint8_t **, struct doca_flow_pipe_cfg *, uint8_t);
 };
 
 enum DOCA_DECAP_HDR {
