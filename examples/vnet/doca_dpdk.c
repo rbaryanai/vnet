@@ -19,23 +19,39 @@ struct doca_dpdk_engine {
 	struct doca_id_pool *meter_profile_pool;
 };
 
+struct doca_dpdk_fwd_conf {
+	bool hairpin;
+	/* TBD: mapping between port and queue if hairpin */
+	int port_to_q[2];
+};
+
 static struct doca_flow_cfg doca_flow_cfg = {0};
 
 struct doca_dpdk_engine doca_dpdk_engine;
+struct doca_dpdk_fwd_conf doca_dpdk_fwd_conf;
+
 #define DOCA_FLOW_MAX_PORTS (128)
 static struct doca_flow_port *doca_dpdk_used_ports[DOCA_FLOW_MAX_PORTS];
 
-void doca_dpdk_init(__rte_unused struct doca_flow_cfg *cfg)
+void doca_dpdk_init(struct doca_flow_cfg *cfg)
 {
 	struct doca_id_pool_cfg pool_cfg = {.size = cfg->total_sessions,
 					    .min = 1};
 	memset(&doca_dpdk_engine, 0, sizeof(doca_dpdk_engine));
+	memset(&doca_dpdk_fwd_conf, 0, sizeof(doca_dpdk_fwd_conf));
 	memset(doca_dpdk_used_ports, 0, sizeof(doca_dpdk_used_ports));
 	doca_dpdk_engine.meter_pool = doca_id_pool_create(&pool_cfg);
 	doca_dpdk_engine.meter_profile_pool = doca_id_pool_create(&pool_cfg);
+	/*TODO: Change the condition to check if we are in switchdev or NIC mode*/
+	if (1) {
+		doca_dpdk_fwd_conf.hairpin = true;
+		/*TODO: Implement the mapping in a better way*/
+		doca_dpdk_fwd_conf.port_to_q[0] = cfg->queues;
+		doca_dpdk_fwd_conf.port_to_q[1] = cfg->queues;
+	}
 	doca_dpdk_init_port(0);
 	doca_dpdk_init_port(1);
-        doca_flow_cfg = *cfg;
+    doca_flow_cfg = *cfg;
 }
 
 static int doca_dpdk_modify_eth_item(struct doca_dpdk_item_entry *entry,
@@ -749,7 +765,7 @@ static int doca_dpdk_build_modify_action(struct doca_flow_pipe_cfg *cfg,
 static void doca_dpdk_build_end_action(struct doca_dpdk_pipe *pipe)
 {
 	struct rte_flow_action *action =
-	    &pipe->actions[pipe->nb_actions_entry++];
+	    &pipe->actions[pipe->nb_actions_entry];
 	action->type = RTE_FLOW_ACTION_TYPE_END;
 }
 
@@ -783,19 +799,50 @@ static int doca_dpdk_build_rss_action(struct doca_dpdk_action_entry *entry,
 	return 0;
 }
 
+static int
+doca_dpdk_build_fwd_action(struct doca_dpdk_action_entry *entry,
+                           uint16_t idx)
+{
+    struct rte_flow_action *action = entry->action;
+    struct doca_dpdk_action_fwd_data *fwd = &entry->action_data.fwd;
+
+    if (doca_dpdk_fwd_conf.hairpin) {
+        fwd->queue_conf.index = doca_dpdk_fwd_conf.port_to_q[idx];
+        action->type = RTE_FLOW_ACTION_TYPE_QUEUE;
+        action->conf = &fwd->queue_conf;
+    } else {
+        fwd->port_id_conf.id = idx;
+        fwd->port_id_conf.original = 0;
+        action->type = RTE_FLOW_ACTION_TYPE_PORT_ID;
+        action->conf = &fwd->port_id_conf;
+    }
+    return 0;
+}
+
 static int doca_dpdk_build_fwd(struct doca_dpdk_pipe *pipe,
-			       struct doca_flow_fwd *fwd_cfg)
+							   struct doca_flow_fwd *fwd_cfg)
 {
 	struct doca_dpdk_action_entry *action_entry;
 
-	action_entry = &pipe->action_entry[pipe->nb_actions_entry++];
+	action_entry = &pipe->action_entry[pipe->nb_actions_entry];
+	/* if we already create the forward action don't do it again */
+	if (action_entry->action->type == RTE_FLOW_ACTION_TYPE_QUEUE ||
+		action_entry->action->type == RTE_FLOW_ACTION_TYPE_PORT_ID ||
+		action_entry->action->type == RTE_FLOW_ACTION_TYPE_RSS) {
+		return -1;
+	}
+
 	switch (fwd_cfg->type) {
 	case DOCA_FWD_RSS:
 		doca_dpdk_build_rss_action(action_entry, fwd_cfg);
 		break;
+    case DOCA_FWD_PORT:
+        doca_dpdk_build_fwd_action(action_entry, fwd_cfg->port.id);
+        break;
 	default:
 		return 1;
 	}
+	pipe->nb_actions_entry++;
 	return 0;
 }
 
@@ -1078,13 +1125,9 @@ static struct rte_flow *doca_dpdk_pipe_create_entry_flow(
 		DOCA_LOG_ERR("modify pipe action fail.\n");
 		return NULL;
 	}
-	if (mon->flags != DOCA_FLOW_NONE &&
+	if (mon && mon->flags != DOCA_FLOW_NONE &&
 	    doca_dpdk_build_monitor_action(pipe, mon)) {
 		DOCA_LOG_ERR("create monitor action fail.\n");
-		return NULL;
-	}
-	if (!pipe->meter_info && doca_dpdk_build_fwd(pipe, cfg)) {
-		DOCA_LOG_ERR("build pipe fwd action fail.");
 		return NULL;
 	}
 	if (pipe->meter_info &&
@@ -1092,16 +1135,32 @@ static struct rte_flow *doca_dpdk_pipe_create_entry_flow(
 		DOCA_LOG_ERR("build pipe meter action fail.");
 		return NULL;
 	}
+	if (!pipe->meter_info) {
+		int ret;
+
+		ret = doca_dpdk_build_fwd(pipe, cfg);
+		/* We already created the fwd action */
+		if (ret == -1)
+			goto out;
+		if (ret) {
+			DOCA_LOG_ERR("build pipe fwd action fail.");
+			return NULL;
+		}
+	}
 	doca_dpdk_build_end_action(pipe);
+out:
 	return doca_dpdk_create_flow(pipe->port_id, &pipe->attr, pipe->items,
 				     pipe->actions);
 }
 
-struct doca_flow_pipe_entry *doca_dpdk_pipe_create_flow(
-	struct doca_flow_pipe *pipe, uint16_t pipe_queue,
-        struct doca_flow_match *match,
-	struct doca_flow_actions *actions, struct doca_flow_monitor *mon,
-	struct doca_flow_fwd *cfg, struct doca_flow_error *err)
+struct doca_flow_pipe_entry *
+doca_dpdk_pipe_create_flow(struct doca_flow_pipe *pipe,
+                           uint16_t pipe_queue,
+                           struct doca_flow_match *match,
+                           struct doca_flow_actions *actions,
+                           struct doca_flow_monitor *mon,
+                           struct doca_flow_fwd *cfg,
+                           struct doca_flow_error *err)
 {
 	struct doca_flow_pipe_entry *entry;
 
@@ -1204,8 +1263,8 @@ static int doca_dpdk_create_pipe_flow(struct doca_dpdk_pipe *flow,
 
 struct doca_flow_pipe *
 doca_dpdk_create_pipe(struct doca_flow_pipe_cfg *cfg,
-                        struct doca_flow_fwd *fwd,
-                        struct doca_flow_error *err)
+                      struct doca_flow_fwd *fwd,
+                      struct doca_flow_error *err)
 {
 	int ret;
 	uint32_t idx;
@@ -1232,6 +1291,10 @@ doca_dpdk_create_pipe(struct doca_flow_pipe_cfg *cfg,
 		flow->item_entry[idx].item = &pl->flow.items[idx];
 	for (idx = 0; idx < MAX_ACTIONS; idx++)
 		flow->action_entry[idx].action = &pl->flow.actions[idx];
+    if (fwd && fwd->type == DOCA_FWD_PORT)
+    {
+        doca_dpdk_build_fwd(flow, fwd);
+    }
 	ret = doca_dpdk_create_pipe_flow(flow, cfg, err);
 	if (ret) {
 		free(pl);
@@ -1317,8 +1380,8 @@ static void doca_dpdk_free_pipe(uint16_t portid,
 	if (meter_id) { /*all flows delete, destroy meter rule*/
 		struct rte_mtr_error mtr_err;
 
-		rte_mtr_meter_policy_delete(portid, meter_id, &mtr_err);
-		rte_mtr_meter_profile_delete(portid, meter_id, &mtr_err);
+		//rte_mtr_meter_policy_delete(portid, meter_id, &mtr_err);
+		//rte_mtr_meter_profile_delete(portid, meter_id, &mtr_err);
 	}
 	rte_spinlock_unlock(&pipe->entry_lock);
 	free(pipe);
