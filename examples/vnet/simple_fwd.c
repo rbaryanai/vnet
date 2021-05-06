@@ -296,12 +296,12 @@ sf_pipe_add_entry(struct doca_pkt_info *pinfo,
 	match.in_dst_port = doca_pinfo_inner_dst_port(pinfo);
 
 
-	return doca_flow_pipe_add_entry(0, pipe, &match, &actions, NULL,
+	return doca_flow_pipe_add_entry(0, pipe, &match, NULL, &actions, NULL,
                             	    fwd_tbl_port[pinfo->orig_port_id], &err);
 }
 
 
-static int 
+static int
 sf_handle_new_flow(struct doca_pkt_info *pinfo,
     		       struct doca_ft_user_ctx **ctx)
 {
