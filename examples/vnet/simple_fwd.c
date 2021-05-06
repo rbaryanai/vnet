@@ -180,9 +180,9 @@ static void build_decap_action(struct doca_flow_actions *actions)
 static void build_encap_action(struct doca_flow_actions *actions)
 {
 	actions->has_encap = true;
-	actions->encap.in_src_ip.a.ipv4_addr =
+	actions->encap.src_ip.a.ipv4_addr =
 	    doca_inline_parse_ipv4("111.168.1.2");
-	actions->encap.in_dst_ip.a.ipv4_addr = 0xffffffff;
+	actions->encap.dst_ip.a.ipv4_addr = 0xffffffff;
 
 	memset(actions->encap.src_mac, 0xff, sizeof(actions->encap.src_mac));
 	memset(actions->encap.dst_mac, 0xff, sizeof(actions->encap.src_mac));

@@ -129,8 +129,8 @@ struct doca_flow_encap_action {
 	uint8_t src_mac[DOCA_ETHER_ADDR_LEN];
 	uint8_t dst_mac[DOCA_ETHER_ADDR_LEN];
 
-	struct doca_ip_addr in_src_ip;
-	struct doca_ip_addr in_dst_ip;
+	struct doca_ip_addr src_ip;
+	struct doca_ip_addr dst_ip;
 	struct doca_flow_tun tun;
 };
 
