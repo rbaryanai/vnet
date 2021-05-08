@@ -8,7 +8,7 @@ static const uint32_t DP_MAGIC_NUM_FLIP = 0xd4c3b2a1;
 static const uint32_t DP_MAGIC_NUM_DONT_FLIP = 0xa1b2c3d4;
 static int DP_FLIP;
 
-struct doca_pcap_hander {
+struct doca_pcap_handler {
 	FILE *fd;
 };
 
@@ -29,10 +29,10 @@ struct pcap_pkt_header {
 	uint32_t pkt_len;
 };
 
-struct doca_pcap_hander *doca_pcap_file_start(const char *filename)
+struct doca_pcap_handler *doca_pcap_file_start(const char *filename)
 {
 	size_t n;
-	struct doca_pcap_hander *p_handler;
+	struct doca_pcap_handler *p_handler;
 	struct pcap_file_header hdr;
 	FILE *fd = fopen(filename, "wb");
 
@@ -49,18 +49,18 @@ struct doca_pcap_hander *doca_pcap_file_start(const char *filename)
 
 	n = fwrite(&hdr, 1, sizeof(struct pcap_file_header), fd);
 	p_handler =
-	    (struct doca_pcap_hander *)malloc(sizeof(struct doca_pcap_hander));
+	    (struct doca_pcap_handler *)malloc(sizeof(struct doca_pcap_handler));
 
 	if (n != sizeof(struct pcap_file_header) || p_handler == NULL) {
 		fclose(fd);
 		return NULL;
 	}
-	memset(p_handler, 0, sizeof(struct doca_pcap_hander));
+	memset(p_handler, 0, sizeof(struct doca_pcap_handler));
 	p_handler->fd = fd;
 	return p_handler;
 }
 
-int doca_pcap_write(struct doca_pcap_hander *p_handler, uint8_t *buff,
+int doca_pcap_write(struct doca_pcap_handler *p_handler, uint8_t *buff,
 		    int buff_len, uint64_t timestamp, int cap_len)
 {
 	size_t n;
@@ -79,7 +79,7 @@ int doca_pcap_write(struct doca_pcap_hander *p_handler, uint8_t *buff,
 	return n;
 }
 
-void doca_pcap_file_stop(struct doca_pcap_hander *p_handler)
+void doca_pcap_file_stop(struct doca_pcap_handler *p_handler)
 {
 	fclose(p_handler->fd);
 	free(p_handler);
