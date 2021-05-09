@@ -14,7 +14,7 @@
 
 DOCA_LOG_MODULE(flow_table);
 
-static int _doca_ft_destory_flow(struct doca_ft *ft, struct doca_ft_key *key);
+static int _doca_ft_destroy_flow(struct doca_ft *ft, struct doca_ft_key *key);
 
 struct doca_ft_entry {
 	LIST_ENTRY(doca_ft_entry) next; /* entry pointers in the list. */
@@ -105,7 +105,7 @@ static void *doca_ft_aging_main(void *void_ptr)
 						if (node->expiration < t) {
 							DOCA_LOG_DBG(
 							    "removing flow");
-							_doca_ft_destory_flow(
+							_doca_ft_destroy_flow(
 							    ft, &node->key);
 							still_aging = true;
 							break;
@@ -259,7 +259,7 @@ bool doca_ft_add_new(struct doca_ft *ft, struct doca_pkt_info *pinfo,
 	return true;
 }
 
-static int _doca_ft_destory_flow(struct doca_ft *ft, struct doca_ft_key *key)
+static int _doca_ft_destroy_flow(struct doca_ft *ft, struct doca_ft_key *key)
 {
 	struct doca_ft_entry *f;
 
@@ -278,7 +278,7 @@ static int _doca_ft_destory_flow(struct doca_ft *ft, struct doca_ft_key *key)
 
 int doca_ft_destory_flow(struct doca_ft *ft, struct doca_ft_key *key)
 {
-	return _doca_ft_destory_flow(ft, key);
+	return _doca_ft_destroy_flow(ft, key);
 }
 
 void doca_ft_destroy(struct doca_ft *ft)
@@ -293,7 +293,7 @@ void doca_ft_destroy(struct doca_ft *ft)
 			first = &ft->buckets[i].head;
 			LIST_FOREACH(node, first, next) {
 				LIST_REMOVE(node, next);
-				_doca_ft_destory_flow(ft, &node->key);
+				_doca_ft_destroy_flow(ft, &node->key);
 				continue;
 			}
 		} while (0);

@@ -35,7 +35,7 @@ struct doca_gauge_cfg {
 struct doca_gauge *doca_gauge_init(struct doca_gauge_cfg *cfg);
 
 /**
- * @brief - reset to inital state (like new alloc)
+ * @brief - reset to initial state (like new alloc)
  *
  * @param gauge
  */
