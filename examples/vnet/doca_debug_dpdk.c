@@ -169,6 +169,28 @@ static void doca_dump_gre_item_key(const struct rte_flow_item *item)
 	doca_log_buff("/ ");
 }
 
+static void doca_dump_raw_encap(const struct rte_flow_action_raw_encap *encap)
+{
+    uint32_t i;
+
+    doca_log_prefix_buff("set raw_encap 0 raw ");
+    for (i = 0; i < encap->size; i++) {
+        doca_log_prefix_buff("%02x", encap->data[i]);
+    }
+    doca_log_prefix_buff("\n");
+}
+
+static void doca_dump_raw_decap(const struct rte_flow_action_raw_decap *decap)
+{
+    uint32_t i;
+
+    doca_log_prefix_buff("set raw_decap 0 raw ");
+    for (i = 0; i < decap->size; i++) {
+        doca_log_prefix_buff("%02x", decap->data[i]);
+    }
+    doca_log_prefix_buff("\n");
+}
+
 void doca_dump_rte_flow(const char *name, uint16_t port_id,
 			const struct rte_flow_attr *attr,
 			const struct rte_flow_item items[],
@@ -229,6 +251,8 @@ void doca_dump_rte_flow(const char *name, uint16_t port_id,
 		const struct rte_flow_action_set_tp *set_tp;
 		const struct rte_flow_action_rss *rss;
 		const struct rte_flow_action_meter *meter;
+		const struct rte_flow_action_raw_encap *encap;
+		const struct rte_flow_action_raw_decap *decap;
 
 		switch (action_type) {
 		case RTE_FLOW_ACTION_TYPE_MARK:
@@ -301,10 +325,18 @@ void doca_dump_rte_flow(const char *name, uint16_t port_id,
 			doca_log_buff("port_id id %u / ", portid->id);
 			break;
 		case RTE_FLOW_ACTION_TYPE_RAW_DECAP:
-			doca_log_buff("raw_decap / "); /*need dump decap buff?*/
+			decap = (const struct rte_flow_action_raw_decap *)
+					actions->conf;
+
+			doca_dump_raw_decap(decap);
+			doca_log_buff("raw_decap index 0 / "); /*need dump decap buff?*/
 			break;
 		case RTE_FLOW_ACTION_TYPE_RAW_ENCAP:
-			doca_log_buff("raw_encap / ");
+			encap = (const struct rte_flow_action_raw_encap *)
+					actions->conf;
+
+			doca_dump_raw_encap(encap);
+			doca_log_buff("raw_encap index 0 / ");
 			break;
 		case RTE_FLOW_ACTION_TYPE_DROP:
 			doca_log_buff("drop / ");
@@ -322,6 +354,7 @@ void doca_dump_rte_flow(const char *name, uint16_t port_id,
 		}
 	}
 	doca_log_buff("end ");
+	DOCA_LOG_DBG("%s\n", prefix_buff);
 	DOCA_LOG_DBG("%s\n", dump_buff);
 }
 

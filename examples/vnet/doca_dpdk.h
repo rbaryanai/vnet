@@ -27,6 +27,11 @@ enum ACTION_DIRECTION {
 	DOCA_DST,
 };
 
+enum DOCA_TUNNEL_ACTION_TYPE {
+	DOCA_ENCAP,
+	DOCA_DECAP,
+};
+
 struct doca_dpdk_item_eth_data {
 	struct rte_flow_item_eth spec;
 	struct rte_flow_item_eth last;
@@ -104,7 +109,7 @@ struct doca_dpdk_item_entry {
 	struct rte_flow_item *item;
 	struct doca_dpdk_item_data item_data;
 	int (*modify_item)(struct doca_dpdk_item_entry *entry,
-		struct doca_flow_match *match);
+		struct doca_flow_match *match, struct doca_flow_match *mask);
 };
 
 struct doca_dpdk_action_mac_data {
@@ -195,7 +200,7 @@ struct doca_dpdk_pipe_list {
 
 struct endecap_layer {
 	uint16_t layer;
-	void (*fill_data)(uint8_t **, struct doca_flow_pipe_cfg *);
+	void (*fill_data)(uint8_t **, struct doca_flow_pipe_cfg *, uint8_t);
 };
 
 enum DOCA_DECAP_HDR {
@@ -312,7 +317,7 @@ doca_dpdk_create_pipe(struct doca_flow_pipe_cfg *cfg,
 
 struct doca_flow_pipe_entry *doca_dpdk_pipe_create_flow(
 	struct doca_flow_pipe *pipe, uint16_t pipe_queue,
-        struct doca_flow_match *match,
+        struct doca_flow_match *match, struct doca_flow_match *match_mask,
 	struct doca_flow_actions *actions, struct doca_flow_monitor *mon,
 	struct doca_flow_fwd *cfg, struct doca_flow_error *err);
 
