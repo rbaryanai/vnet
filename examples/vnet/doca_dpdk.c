@@ -986,11 +986,18 @@ doca_dpdk_build_fwd_action(struct doca_dpdk_action_entry *entry,
 }
 
 static int doca_dpdk_build_fwd(struct doca_dpdk_pipe *pipe,
-							   struct doca_flow_fwd *fwd_cfg)
+							   struct doca_flow_fwd *fwd_cfg,
+							   bool entry)
 {
 	struct doca_dpdk_action_entry *action_entry;
+	int idx;
 
-	action_entry = &pipe->action_entry[pipe->nb_actions_pipe];
+	if (entry && pipe->nb_actions_pipe) {
+		idx = pipe->nb_actions_pipe -1;
+	} else {
+		idx = pipe->nb_actions_pipe;
+	}
+	action_entry = &pipe->action_entry[idx];
 	/* if we already create the forward action don't do it again */
 	if (action_entry->action->type == RTE_FLOW_ACTION_TYPE_QUEUE ||
 		action_entry->action->type == RTE_FLOW_ACTION_TYPE_PORT_ID ||
@@ -1008,7 +1015,8 @@ static int doca_dpdk_build_fwd(struct doca_dpdk_pipe *pipe,
 	default:
 		return 1;
 	}
-	pipe->nb_actions_pipe++;
+	idx++;
+	pipe->nb_actions_pipe = idx;
 	return 0;
 }
 
@@ -1304,7 +1312,7 @@ static struct rte_flow *doca_dpdk_pipe_create_entry_flow(
 	if (!pipe->meter_info) {
 		int ret;
 
-		ret = doca_dpdk_build_fwd(pipe, cfg);
+		ret = doca_dpdk_build_fwd(pipe, cfg, true);
 		/* We already created the fwd action */
 		if (ret == -1)
 			goto out;
@@ -1425,7 +1433,7 @@ static int doca_dpdk_create_pipe_flow(struct doca_dpdk_pipe *flow,
 	}
 	if (fwd && fwd->type == DOCA_FWD_PORT)
 	{
-	    doca_dpdk_build_fwd(flow, fwd);
+	    doca_dpdk_build_fwd(flow, fwd, false);
 	}
 
 	doca_dump_rte_flow("create pipe:", flow->port_id, &flow->attr,
