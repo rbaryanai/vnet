@@ -173,6 +173,7 @@ enum doca_flow_fwd_type {
     DOCA_FWD_RSS,
     DOCA_FWD_PORT, 
     DOCA_FWD_PIPE,
+    DOCA_FWD_DROP
 };
 
 enum doca_rss_type {
