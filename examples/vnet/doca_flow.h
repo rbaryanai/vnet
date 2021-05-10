@@ -327,9 +327,9 @@ doca_flow_create_pipe(struct doca_flow_pipe_cfg *cfg,
  */
 struct doca_flow_pipe_entry *doca_flow_pipe_add_entry(
 	uint16_t pipe_queue, struct doca_flow_pipe *pipe,
-	struct doca_flow_match *match, struct doca_flow_match *mask,
-    struct doca_flow_actions *actions, struct doca_flow_monitor *mod,
-    struct doca_flow_fwd *fwd, struct doca_flow_error *err);
+	struct doca_flow_match *match, struct doca_flow_actions *actions,
+	struct doca_flow_monitor *mod, struct doca_flow_fwd *fwd,
+	struct doca_flow_error *err);
 
 /**
  * @brief - default pipe is match all, and send to SW.

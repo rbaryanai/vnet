@@ -444,7 +444,7 @@ gw_pipe_add_ol_to_ul_entry(struct doca_pkt_info *pinfo,
 	    (doca_pinfo_inner_ipv4_dst(pinfo) & rte_cpu_to_be_32(0x00ffffff)) |
 	    rte_cpu_to_be_32(0x25000000);
 	return doca_flow_pipe_add_entry(
-	    0, pipe, &match, NULL, &actions, &monitor,
+	    0, pipe, &match, &actions, &monitor,
 	    sw_rss_fwd_tbl_port[pinfo->orig_port_id], &err);
 }
 
@@ -493,7 +493,7 @@ gw_pipe_add_ol_to_ol_entry(struct doca_pkt_info *pinfo,
 	/* add src port mac*/
 	memset(actions.encap.src_mac, 0xff, sizeof(actions.encap.src_mac));
 	return doca_flow_pipe_add_entry(
-	    0, pipe, &match, NULL, &actions, &monitor,
+	    0, pipe, &match, &actions, &monitor,
 	    fwd_tbl_port[gw_slb_peer_port(pinfo->orig_port_id)],
             &err);
 }

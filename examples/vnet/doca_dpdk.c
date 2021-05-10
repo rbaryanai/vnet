@@ -1173,8 +1173,7 @@ static int doca_dpdk_build_monitor_action(struct doca_dpdk_pipe *pipe,
 }
 
 static int doca_dpdk_modify_pipe_match(struct doca_dpdk_pipe *pipe,
-				       struct doca_flow_match *match,
-                      struct doca_flow_match *mask)
+				       struct doca_flow_match *match)
 {
 	int idex, ret;
 	struct doca_dpdk_item_entry *item_entry;
@@ -1183,7 +1182,7 @@ static int doca_dpdk_modify_pipe_match(struct doca_dpdk_pipe *pipe,
 		item_entry = &pipe->item_entry[idex];
 		if (item_entry->modify_item == NULL)
 			continue;
-		ret = item_entry->modify_item(item_entry, match, mask);
+		ret = item_entry->modify_item(item_entry, match);
 		if (ret)
 			return ret;
 	}
@@ -1274,9 +1273,9 @@ static struct rte_flow *doca_dpdk_create_def_rss(uint16_t port_id)
 
 static struct rte_flow *doca_dpdk_pipe_create_entry_flow(
 	struct doca_dpdk_pipe *pipe, struct doca_flow_pipe_entry *entry,
-	struct doca_flow_match *match, struct doca_flow_match *mask,
-    struct doca_flow_actions *actions, struct doca_flow_monitor *mon,
-    struct doca_flow_fwd *cfg, __rte_unused struct doca_flow_error *err)
+	struct doca_flow_match *match, struct doca_flow_actions *actions,
+	struct doca_flow_monitor *mon, struct doca_flow_fwd *cfg,
+	__rte_unused struct doca_flow_error *err)
 {
 	DOCA_LOG_DBG("pip create new flow:\n");
 	doca_dump_flow_match(match);
@@ -1284,7 +1283,7 @@ static struct rte_flow *doca_dpdk_pipe_create_entry_flow(
 	pipe->nb_actions_entry = pipe->nb_actions_pipe;
 	if (match == NULL && actions == NULL && cfg == NULL)
 		return NULL;
-	if (doca_dpdk_modify_pipe_match(pipe, match, mask)) {
+	if (doca_dpdk_modify_pipe_match(pipe, match)) {
 		DOCA_LOG_ERR("modify pipe match item fail.\n");
 		return NULL;
 	}
@@ -1324,7 +1323,6 @@ struct doca_flow_pipe_entry *
 doca_dpdk_pipe_create_flow(struct doca_flow_pipe *pipe,
                            uint16_t pipe_queue,
                            struct doca_flow_match *match,
-                           struct doca_flow_match *mask,
                            struct doca_flow_actions *actions,
                            struct doca_flow_monitor *mon,
                            struct doca_flow_fwd *cfg,
@@ -1337,7 +1335,7 @@ doca_dpdk_pipe_create_flow(struct doca_flow_pipe *pipe,
 	if (entry == NULL)
 		return NULL;
 	entry->pipe_entry = doca_dpdk_pipe_create_entry_flow(
-	    &pipe->flow, entry, match, mask, actions, mon, cfg, err);
+	    &pipe->flow, entry, match, actions, mon, cfg, err);
 	if (entry->pipe_entry == NULL) {
 		DOCA_LOG_INFO("create pip entry fail,idex:%d",
 			      pipe->pipe_entry_id);

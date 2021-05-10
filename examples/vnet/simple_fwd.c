@@ -306,7 +306,7 @@ sf_pipe_add_entry(struct doca_pkt_info *pinfo,
 	actions.encap.tun.type = DOCA_TUN_VXLAN;
 	actions.encap.tun.vxlan.tun_id = 0x42;
 
-	return doca_flow_pipe_add_entry(0, pipe, &match, NULL, &actions, NULL,
+	return doca_flow_pipe_add_entry(0, pipe, &match, &actions, NULL,
                             	    fwd_tbl_port[pinfo->orig_port_id], &err);
 }
 
