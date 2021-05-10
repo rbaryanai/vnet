@@ -97,8 +97,8 @@ int doca_encap_table_add_id(struct doca_flow_encap_action *ea)
         return -1;
     }
 
-    key.in_src_ip = ea->in_src_ip;
-    key.in_dst_ip = ea->in_dst_ip;
+    key.in_src_ip = ea->src_ip;
+    key.in_dst_ip = ea->dst_ip;
     key.tun = ea->tun;
 
     id = rte_hash_add_key(encap_table_ins->h, (void *) &key);
@@ -112,8 +112,8 @@ int doca_encap_table_get_id(struct doca_flow_encap_action *ea)
 {
     struct encap_table_key key = {0};
 
-    key.in_src_ip = ea->in_src_ip;
-    key.in_dst_ip = ea->in_dst_ip;
+    key.in_src_ip = ea->src_ip;
+    key.in_dst_ip = ea->dst_ip;
     key.tun = ea->tun;
 
     return rte_hash_lookup(encap_table_ins->h, (void *) &key);
