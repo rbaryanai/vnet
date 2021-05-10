@@ -11,10 +11,12 @@
 #include "doca_id_pool.h"
 
 //#define SUPPORT_METER 0
+#define DOCA_FLOW_MAX_PORTS (128)
 
 DOCA_LOG_MODULE(doca_dpdk);
 
 struct doca_dpdk_engine {
+        bool has_acl;
 	struct doca_id_pool *meter_pool;
 	struct doca_id_pool *meter_profile_pool;
 };
@@ -30,7 +32,6 @@ static struct doca_flow_cfg doca_flow_cfg = {0};
 struct doca_dpdk_engine doca_dpdk_engine;
 struct doca_dpdk_fwd_conf doca_dpdk_fwd_conf;
 
-#define DOCA_FLOW_MAX_PORTS (128)
 static struct doca_flow_port *doca_dpdk_used_ports[DOCA_FLOW_MAX_PORTS];
 
 void doca_dpdk_init(struct doca_flow_cfg *cfg)
@@ -51,7 +52,12 @@ void doca_dpdk_init(struct doca_flow_cfg *cfg)
 	}
 	doca_dpdk_init_port(0);
 	doca_dpdk_init_port(1);
-    doca_flow_cfg = *cfg;
+        doca_flow_cfg = *cfg;
+}
+
+void doca_dpdk_enable_acl(void)
+{
+    doca_dpdk_engine.has_acl = true;
 }
 
 static int doca_dpdk_modify_eth_item(struct doca_dpdk_item_entry *entry,

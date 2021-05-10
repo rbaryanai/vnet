@@ -329,4 +329,7 @@ struct doca_flow_port *doca_dpdk_port_start(struct doca_flow_port_cfg *cfg,
 					    struct doca_flow_error *err);
 void doca_dpdk_destroy(uint16_t port_id);
 void doca_dpdk_dump_pipe(uint16_t port_id);
+
+void doca_dpdk_enable_acl(void);
+
 #endif

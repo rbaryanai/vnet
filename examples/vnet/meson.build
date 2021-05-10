@@ -14,4 +14,5 @@ sources = files('main.c', 'doca_flow.h', 'doca_flow.c'
     , 'doca_id_pool.h', 'doca_id_pool.c'
     , 'doca_dpdk_priv.h', 'simple_fwd.c', 'simple_fwd.h'
     , 'doca_encap_table.h', 'doca_encap_table.c'
+    , 'doca_flow_chain.h' , 'doca_flow_chain.c'
 )
