@@ -585,7 +585,7 @@ static void doca_dpdk_build_udp_header(uint8_t **header,
 	memset(&udp_hdr, 0, sizeof(struct rte_flow_item_udp));
 	if (type == DOCA_ENCAP) {
 		if (encap_data->tun.type == DOCA_TUN_VXLAN) {
-			udp_hdr.dst_port == DOCA_VXLAN_DEFAULT_PORT;
+			udp_hdr.dst_port = DOCA_VXLAN_DEFAULT_PORT;
 		}
 	}
 	memcpy(*header, &udp_hdr, sizeof(udp_hdr));
