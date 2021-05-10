@@ -95,6 +95,7 @@ struct doca_flow_acl_create(struct doca_flow_acl_cfg *cfg);
  *  after all rules are configured apply should  
  *  be called.
  *
+ * @param port_id 
  * @param row
  * @param domain
  * @param src_prefix
@@ -107,7 +108,8 @@ struct doca_flow_acl_create(struct doca_flow_acl_cfg *cfg);
  *
  * @return 0 on success and other value otherwise.
  */
-int doca_flow_acl_add_row(uint16_t row, uint8_t domain,
+int doca_flow_acl_add_row(struct doca_flow_port *port,
+            uint16_t row, uint8_t domain,
             struct doca_flow_acl_ip_prefix_list *src_prefix,
             struct doca_flow_acl_ip_prefix_list *dst_prefix,
             struct doca_flow_acl_port_match     *src_port,
@@ -120,19 +122,20 @@ int doca_flow_acl_add_row(uint16_t row, uint8_t domain,
  * @brief - remove the row from the table.
  *  apply should be called in order to take affect.
  *
+ * @param port 
  * @param row
  * @param domain
  *
  * @return 0 if such row exits, and was deleted
  */
-int doca_flow_acl_del_row(uint16_t row, int domain);
+int doca_flow_acl_del_row(struct doca_flow_port *port,uint16_t row, int domain);
 
 /**
  * @brief - clear all
  *
  * @return 
  */
-int doca_flow_acl_destroy(void);
+int doca_flow_acl_destroy(struct doca_flow_port *port);
 
 int doca_flow_acl_apply(void);
 

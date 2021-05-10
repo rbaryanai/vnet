@@ -13,12 +13,23 @@
  */
 int doca_encap_table_init(int max_encaps);
 
+/**
+ * @brief - add encap action
+ *      encap is identidied by its 3-tuple
+ *      src ip, dst ip and tun id.
+ *      in case it exists refcnt++.
+ *
+ * @param ea
+ *
+ * @return positive value which is the encap idx.
+ *  negative value on failure.
+ */
 int doca_encap_table_add_id(struct doca_flow_encap_action *ea);
 
 /**
  * @brief - save per id data.
  *  the data is any pointer. table will not alloc or del
- *  the data. 
+ *  the data just ref it.
  *
  * @param id
  * @param data
@@ -28,17 +39,37 @@ int doca_encap_table_add_id(struct doca_flow_encap_action *ea);
  */
 int doca_encap_table_udpate_data(int id, uint8_t *data);
 
+/**
+ * @brief find specific encap.
+ *
+ * @param ea
+ *
+ * @return table encap id, or negative value if no such
+ *  encap exits.
+ */
 int doca_encap_table_get_id(struct doca_flow_encap_action *ea);
+
+/**
+ * @brief - if ea exits
+ *
+ * @param ea
+ *
+ * @return 
+ */
+uint8_t *doca_encap_table_get_data(struct doca_flow_encap_action *ea);
 
 /**
  * @brief - remove from table. 
  *  if id exits with data, data is returned.
+ *  del will casue ref--, and on ref == 0,
+ *  id will be cleared.
  *
  * @param id
  *
- * @return 
+ * @return refcnt value or negative value if doesn't
+ *  exists.
  */
-uint8_t *doca_encap_table_remove_id(int id);
+int doca_encap_table_remove_id(int id);
 
 int doca_encap_table_destroy(int max_encaps);
 
