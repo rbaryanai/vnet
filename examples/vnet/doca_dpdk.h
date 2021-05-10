@@ -122,7 +122,7 @@ struct doca_dpdk_item_entry {
 	struct rte_flow_item *item;
 	struct doca_dpdk_item_data item_data;
 	int (*modify_item)(struct doca_dpdk_item_entry *entry,
-		struct doca_flow_match *match, struct doca_flow_match *mask);
+		struct doca_flow_match *match);
 };
 
 struct doca_dpdk_action_mac_data {
@@ -330,9 +330,9 @@ doca_dpdk_create_pipe(struct doca_flow_pipe_cfg *cfg,
 
 struct doca_flow_pipe_entry *doca_dpdk_pipe_create_flow(
 	struct doca_flow_pipe *pipe, uint16_t pipe_queue,
-        struct doca_flow_match *match, struct doca_flow_match *match_mask,
-	struct doca_flow_actions *actions, struct doca_flow_monitor *mon,
-	struct doca_flow_fwd *cfg, struct doca_flow_error *err);
+    struct doca_flow_match *match, struct doca_flow_actions *actions,
+	struct doca_flow_monitor *mon, struct doca_flow_fwd *cfg,
+	struct doca_flow_error *err);
 
 int doca_dpdk_init_port(uint16_t port_id);
 int doca_dpdk_pipe_free_entry(uint16_t portid,
