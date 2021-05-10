@@ -599,6 +599,7 @@ static void doca_dpdk_build_udp_header(uint8_t **header,
 	if (type == DOCA_ENCAP) {
 		if (encap_data->tun.type == DOCA_TUN_VXLAN) {
 			udp_hdr.dst_port = DOCA_VXLAN_DEFAULT_PORT;
+
 		}
 	}
 	memcpy(*header, &udp_hdr, sizeof(udp_hdr));
@@ -724,6 +725,7 @@ static void doca_dpdk_build_raw_data(uint8_t **header,
 		gre_hdr.k = 1;
 		gre_hdr.proto = rte_cpu_to_be_16(protocol); // this limits the inner ip type to be the same asthe outer
 		memcpy(header, &gre_hdr, sizeof(gre_hdr));
+
 		header += sizeof(gre_hdr);
 		key_data = (uint32_t *)(header);
 		*key_data = encap_data->tun.gre.key;

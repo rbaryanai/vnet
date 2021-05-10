@@ -82,7 +82,8 @@ int doca_encap_table_init(int max_encaps)
         return -1;
     }
 
-    /* TBD: for now using dpdk hash, might need a change
+
+    /* TBD: for now using dpdk hash, might need a change 
      * if should be accessed a lot from multi cores */
     memset(encap_table_ins, 0, sizeof(total_size));
     encap_table_hash_params.entries = max_encaps;
@@ -148,7 +149,6 @@ int doca_encap_table_udpate_data(int id, uint8_t *data)
 {
     if (id < 0 || id > encap_table_ins->max)
         return -1;
-
     rte_spinlock_lock(&encap_table_ins->lock);
     if (encap_table_ins->entries[id].used) {
         encap_table_ins->entries[id].data = data;
@@ -161,6 +161,7 @@ int doca_encap_table_udpate_data(int id, uint8_t *data)
 
 int doca_encap_table_remove_id(int id)
 {
+
      if (id < 0 || id > encap_table_ins->max)
         return  0;
 
@@ -185,7 +186,7 @@ int doca_encap_table_remove_id(int id)
  *
  * @param ea
  *
- * @return
+ * @return 
  */
 uint8_t *doca_encap_table_get_data(struct doca_flow_encap_action *ea)
 {
