@@ -215,9 +215,9 @@ static void gw_build_encap_tun(struct doca_flow_actions *actions)
 
 static void gw_build_encap_actions(struct doca_flow_actions *actions)
 {
-	actions->encap.in_src_ip.a.ipv4_addr =
+	actions->encap.src_ip.a.ipv4_addr =
 	    doca_inline_parse_ipv4("13.0.0.13");
-	actions->encap.in_dst_ip.a.ipv4_addr = 0xffffffff;
+	actions->encap.dst_ip.a.ipv4_addr = 0xffffffff;
 
 	memset(actions->encap.src_mac, 0xff, sizeof(actions->encap.src_mac));
 	memset(actions->encap.dst_mac, 0xff, sizeof(actions->encap.src_mac));
@@ -479,13 +479,13 @@ gw_pipe_add_ol_to_ol_entry(struct doca_pkt_info *pinfo,
 	    rte_cpu_to_be_32(0x25000000);
 
 	/* encap: choose next node in round robin, ip and vni*/
-	gw_slb_set_next_node(&actions.encap.in_dst_ip.a.ipv4_addr,
+	gw_slb_set_next_node(&actions.encap.dst_ip.a.ipv4_addr,
 			     &actions.encap.tun.vxlan.tun_id);
 	actions.encap.tun.type = DOCA_TUN_VXLAN;
 
 	/* set chosen node mac address using fib tbl */
 	if (!doca_lookup_fib_tbl_entry(gw_ins->gw_fib_tbl,
-				       &actions.encap.in_dst_ip.a.ipv4_addr,
+				       &actions.encap.dst_ip.a.ipv4_addr,
 				       actions.encap.dst_mac)) {
 		DOCA_LOG_ERR("no mac address for ip ");
 		return NULL;
