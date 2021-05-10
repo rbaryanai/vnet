@@ -9,8 +9,8 @@ DOCA_LOG_MODULE(doca_encap_table);
 #define ENCAP_HASH_ENTRIES 1024
 
 struct encap_table_key {
-        struct doca_ip_addr in_src_ip;
-	struct doca_ip_addr in_dst_ip;
+        struct doca_ip_addr src_ip;
+	struct doca_ip_addr dst_ip;
 	struct doca_flow_tun tun;
 };
 
@@ -37,8 +37,8 @@ encap_hash_crc(const void *data, __rte_unused uint32_t data_len,
 {
     const struct encap_table_key *k;
     k = data;
-    init_val = rte_hash_crc_4byte(k->in_src_ip.a.ipv4_addr, init_val);
-    init_val = rte_hash_crc_4byte(k->in_dst_ip.a.ipv4_addr, init_val);
+    init_val = rte_hash_crc_4byte(k->src_ip.a.ipv4_addr, init_val);
+    init_val = rte_hash_crc_4byte(k->dst_ip.a.ipv4_addr, init_val);
     switch (k->tun.type) {
         case DOCA_TUN_VXLAN:
             init_val = rte_hash_crc_4byte(k->tun.vxlan.tun_id, init_val);
@@ -69,7 +69,7 @@ int doca_encap_table_init(int max_encaps)
         return -1;
     }
 
-    /* TBD: for now using dpdk hash, might need a change 
+    /* TBD: for now using dpdk hash, might need a change
      * if should be accessed a lot from multi cores */
     memset(encap_table_ins, 0, sizeof(total_size));
     encap_table_hash_params.entries = max_encaps;
@@ -90,7 +90,7 @@ int doca_encap_table_add_id(struct doca_flow_encap_action *ea)
 {
     struct encap_table_key key = {0};
     int id = 0;
-    if ((id = doca_encap_table_get_id(ea)) >= 0) 
+    if ((id = doca_encap_table_get_id(ea)) >= 0)
         return id;
 
     if (encap_table_ins->size >= encap_table_ins->max) {
@@ -98,13 +98,13 @@ int doca_encap_table_add_id(struct doca_flow_encap_action *ea)
         return -1;
     }
 
-    if (key.in_src_ip.type != 4) {
+    if (key.src_ip.type != 4) {
         DOCA_LOG_WARN("support only ipv4");
         return -1;
     }
 
-    key.in_src_ip = ea->src_ip;
-    key.in_dst_ip = ea->dst_ip;
+    key.src_ip = ea->src_ip;
+    key.dst_ip = ea->dst_ip;
     key.tun = ea->tun;
     rte_spinlock_lock(&encap_table_ins->lock);
     id = rte_hash_add_key(encap_table_ins->h, (void *) &key);
@@ -121,8 +121,8 @@ int doca_encap_table_get_id(struct doca_flow_encap_action *ea)
     int id;
     struct encap_table_key key = {0};
 
-    key.in_src_ip = ea->src_ip;
-    key.in_dst_ip = ea->dst_ip;
+    key.src_ip = ea->src_ip;
+    key.dst_ip = ea->dst_ip;
     key.tun = ea->tun;
 
     rte_spinlock_lock(&encap_table_ins->lock);
@@ -133,9 +133,9 @@ int doca_encap_table_get_id(struct doca_flow_encap_action *ea)
 
 int doca_encap_table_udpate_data(int id, uint8_t *data)
 {
-    if (id < 0 || id > encap_table_ins->max) 
+    if (id < 0 || id > encap_table_ins->max)
         return -1;
-    
+
     rte_spinlock_lock(&encap_table_ins->lock);
     if (encap_table_ins->entries[id].used) {
         encap_table_ins->entries[id].data = data;
@@ -148,7 +148,7 @@ int doca_encap_table_udpate_data(int id, uint8_t *data)
 
 int doca_encap_table_remove_id(int id)
 {
-     if (id < 0 || id > encap_table_ins->max) 
+     if (id < 0 || id > encap_table_ins->max)
         return  0;
 
     rte_spinlock_lock(&encap_table_ins->lock);
@@ -172,7 +172,7 @@ int doca_encap_table_remove_id(int id)
  *
  * @param ea
  *
- * @return 
+ * @return
  */
 uint8_t *doca_encap_table_get_data(struct doca_flow_encap_action *ea)
 {
