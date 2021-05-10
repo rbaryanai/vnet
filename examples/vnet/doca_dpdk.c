@@ -529,18 +529,22 @@ static void doca_dpdk_build_ether_header(uint8_t **header,
 {
 	struct rte_ether_hdr eth_hdr;
 	struct doca_flow_match *match = cfg->match;
+	struct doca_flow_encap_action *encap_data = &cfg->actions->encap;
 
 	memset(&eth_hdr, 0, sizeof(struct rte_ether_hdr));
 	if (type == DOCA_ENCAP) {
-		if (!doca_is_mac_zero(match->out_dst_mac))
+		uint16_t protocol;
+		if (!doca_is_mac_zero(encap_data->src_mac))
 			rte_ether_addr_copy(
-				(const struct rte_ether_addr *)match->out_src_mac,
+				(const struct rte_ether_addr *)encap_data->src_mac,
 				&eth_hdr.s_addr);
-		if (!doca_is_mac_zero(match->out_src_mac))
+		if (!doca_is_mac_zero(encap_data->dst_mac))
 			rte_ether_addr_copy(
-				(const struct rte_ether_addr *)match->out_src_mac,
+				(const struct rte_ether_addr *)encap_data->dst_mac,
 				&eth_hdr.d_addr);
-		eth_hdr.ether_type = doca_dpdk_get_l3_protol(match, OUTER_MATCH);
+		protocol = encap_data->src_ip.type == DOCA_IPV4 ?
+			RTE_ETHER_TYPE_IPV4 : RTE_ETHER_TYPE_IPV6;
+		eth_hdr.ether_type = rte_cpu_to_be_16(protocol);
 		memcpy(*header, &eth_hdr, sizeof(eth_hdr));
 	}
 	*header += sizeof(eth_hdr);
@@ -554,42 +558,48 @@ static void doca_dpdk_build_ether_header(uint8_t **header,
 
 static void
 doca_dpdk_build_ipv4_header(uint8_t **header,
-			    __rte_unused struct doca_flow_pipe_cfg *cfg, __rte_unused uint8_t type)
+	                     struct doca_flow_pipe_cfg *cfg, uint8_t type)
 {
 	struct rte_ipv4_hdr ipv4_hdr;
+	struct doca_flow_encap_action *encap_data = &cfg->actions->encap;
 
 	memset(&ipv4_hdr, 0, sizeof(struct rte_ipv4_hdr));
-	if (!doca_is_ip_zero(&cfg->match->out_src_ip))
-		ipv4_hdr.src_addr = cfg->match->out_src_ip.a.ipv4_addr;
-	if (!doca_is_ip_zero(&cfg->match->out_dst_ip))
-		ipv4_hdr.dst_addr = cfg->match->out_dst_ip.a.ipv4_addr;
-	if (!cfg->match->out_l4_type)
-		ipv4_hdr.next_proto_id = cfg->match->out_l4_type;
+	if (type == DOCA_ENCAP) {
+		if (!doca_is_ip_zero(&encap_data->src_ip))
+			ipv4_hdr.src_addr = encap_data->src_ip.a.ipv4_addr;
+		if (!doca_is_ip_zero(&encap_data->dst_ip))
+			ipv4_hdr.dst_addr = encap_data->dst_ip.a.ipv4_addr;
+		if (!cfg->match->out_l4_type)
+			ipv4_hdr.next_proto_id = cfg->match->out_l4_type;
+	}
 	memcpy(*header, &ipv4_hdr, sizeof(ipv4_hdr));
 	*header += sizeof(ipv4_hdr);
 }
 
 static void doca_dpdk_build_udp_header(uint8_t **header,
-				       struct doca_flow_pipe_cfg *cfg, __rte_unused uint8_t type)
+	                                struct doca_flow_pipe_cfg *cfg, uint8_t type)
 {
 	struct rte_udp_hdr udp_hdr;
+	struct doca_flow_encap_action *encap_data = &cfg->actions->encap;
 
 	memset(&udp_hdr, 0, sizeof(struct rte_flow_item_udp));
-	if (cfg->match->out_src_port)
-		udp_hdr.src_port = cfg->match->out_src_port;
-	if (cfg->match->out_dst_port)
-		udp_hdr.dst_port = cfg->match->out_dst_port;
+	if (type == DOCA_ENCAP) {
+		if (encap_data->tun.type == DOCA_TUN_VXLAN) {
+			udp_hdr.dst_port == DOCA_VXLAN_DEFAULT_PORT;
+		}
+	}
 	memcpy(*header, &udp_hdr, sizeof(udp_hdr));
 	*header += sizeof(udp_hdr);
 }
 
 static void doca_dpdk_build_vxlan_header(uint8_t **header,
-					 struct doca_flow_pipe_cfg *cfg, __rte_unused uint8_t type)
+	                                 struct doca_flow_pipe_cfg *cfg,
+	                                 uint8_t type)
 {
 	struct rte_vxlan_hdr vxlan_hdr;
 
 	memset(&vxlan_hdr, 0, sizeof(struct rte_vxlan_hdr));
-	memcpy(&vxlan_hdr.vx_vni, (uint8_t *)(&cfg->match->tun.vxlan.tun_id),
+	memcpy(&vxlan_hdr.vx_vni, (uint8_t *)(&cfg->actions->encap.tun.vxlan.tun_id),
 	       3);
 	memcpy(*header, &vxlan_hdr, sizeof(vxlan_hdr));
 	*header += sizeof(vxlan_hdr);
@@ -634,6 +644,86 @@ static void doca_dpdk_build_raw_data(uint8_t **header,
 			layer->fill_data(header, cfg, type);
 	}
 }
+ static int
+ doca_dpdk_modify_encap_action(struct doca_dpdk_action_entry *entry,
+         struct doca_flow_actions *pkt_action)
+ {
+     uint8_t *header;
+	 uint16_t protocol;
+     struct rte_flow_action *action = entry->action;
+     struct doca_dpdk_action_rawencap_data *encap = &entry->action_data.rawencap;
+     struct doca_flow_encap_action *encap_data = &pkt_action->encap;
+
+	header = encap->data;
+	/* ETH */
+	struct rte_ether_hdr eth_hdr;
+	memset(&eth_hdr, 0, sizeof(struct rte_ether_hdr));
+	if (!doca_is_mac_zero(encap_data->src_mac))
+		rte_ether_addr_copy(
+			(const struct rte_ether_addr *)encap_data->src_mac,
+			&eth_hdr.s_addr);
+	if (!doca_is_mac_zero(encap_data->dst_mac))
+		rte_ether_addr_copy(
+			(const struct rte_ether_addr *)encap_data->dst_mac,
+			&eth_hdr.d_addr);
+	protocol = encap_data->src_ip.type == DOCA_IPV4 ?
+		RTE_ETHER_TYPE_IPV4 : RTE_ETHER_TYPE_IPV6;
+	eth_hdr.ether_type = rte_cpu_to_be_16(protocol);
+	memcpy(header, &eth_hdr, sizeof(eth_hdr));
+	header += sizeof(eth_hdr);
+
+	/* IP */
+	struct rte_ipv4_hdr ipv4_hdr;
+	memset(&ipv4_hdr, 0, sizeof(struct rte_ipv4_hdr));
+	if (!doca_is_ip_zero(&encap_data->src_ip))
+		ipv4_hdr.src_addr = encap_data->src_ip.a.ipv4_addr;
+	if (!doca_is_ip_zero(&encap_data->dst_ip))
+		ipv4_hdr.dst_addr = encap_data->dst_ip.a.ipv4_addr;
+	if (encap_data->tun.type == DOCA_TUN_VXLAN)
+		ipv4_hdr.next_proto_id = IPPROTO_UDP;
+	else if (encap_data->tun.type == DOCA_TUN_GRE)
+		ipv4_hdr.next_proto_id = IPPROTO_GRE;
+	else
+		return -1;
+	memcpy(header, &ipv4_hdr, sizeof(ipv4_hdr));
+	header += sizeof(ipv4_hdr);
+
+	if (encap_data->tun.type == DOCA_TUN_VXLAN) {
+		/* UDP */
+		struct rte_udp_hdr udp_hdr;
+		memset(&udp_hdr, 0, sizeof(struct rte_flow_item_udp));
+		udp_hdr.dst_port = DOCA_VXLAN_DEFAULT_PORT;
+		memcpy(header, &udp_hdr, sizeof(udp_hdr));
+		header += sizeof(udp_hdr);
+
+		/* VXLAN */
+		struct rte_vxlan_hdr vxlan_hdr;
+		memset(&vxlan_hdr, 0, sizeof(struct rte_vxlan_hdr));
+		memcpy(&vxlan_hdr.vx_vni, (uint8_t *)(&encap_data->tun.vxlan.tun_id),
+		       3);
+		memcpy(header, &vxlan_hdr, sizeof(vxlan_hdr));
+		header += sizeof(vxlan_hdr);
+	} else if (encap_data->tun.type == DOCA_TUN_GRE) {
+		uint32_t *key_data;
+		struct rte_gre_hdr gre_hdr;
+
+		memset(&gre_hdr, 0, sizeof(struct rte_gre_hdr));
+		gre_hdr.k = 1;
+		gre_hdr.proto = rte_cpu_to_be_16(protocol); // this limits the inner ip type to be the same asthe outer
+		memcpy(*header, &gre_hdr, sizeof(gre_hdr));
+		header += sizeof(gre_hdr);
+		key_data = (uint32_t *)(header);
+		*key_data = encap_data->tun.gre.key;
+		header += sizeof(uint32_t);
+	} else
+		return -1;
+
+	encap->conf.data = encap->data;
+	encap->conf.size = header - encap->data;
+	action->conf = &encap->conf;
+
+	return 0;
+ }
 
 static void doca_dpdk_build_encap_action(struct doca_dpdk_action_entry *entry,
 										 struct doca_flow_pipe_cfg *cfg, uint8_t layer)
@@ -649,6 +739,7 @@ static void doca_dpdk_build_encap_action(struct doca_dpdk_action_entry *entry,
 	encap->conf.size = header - encap->data;
 	action->type = RTE_FLOW_ACTION_TYPE_RAW_ENCAP;
 	action->conf = &encap->conf;
+	entry->modify_action = doca_dpdk_modify_encap_action;
 }
 
 static void doca_dpdk_build_decap_action(struct doca_dpdk_action_entry *entry,
