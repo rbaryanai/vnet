@@ -290,8 +290,8 @@ static void doca_dpdk_build_vxlan_flow_item(struct doca_dpdk_item_entry *entry,
 	flow_item->type = RTE_FLOW_ITEM_TYPE_VXLAN;
 	if (!match->tun.vxlan.tun_id)
 		return;
-	match_mask ? doca_set_item_vni_max(mask->vni) :
-        memcpy(spec->vni, (uint8_t *)(&match_mask->tun.vxlan.tun_id), 3);
+	!match_mask ? doca_set_item_vni_max(mask->vni) :
+        memcpy(mask->vni, (uint8_t *)(&match_mask->tun.vxlan.tun_id), 3);
 	memcpy(spec->vni, (uint8_t *)(&match->tun.vxlan.tun_id), 3);
 	flow_item->spec = spec;
 	flow_item->mask = mask;
@@ -594,7 +594,7 @@ static void doca_dpdk_build_udp_header(uint8_t **header,
 
 static void doca_dpdk_build_vxlan_header(uint8_t **header,
 	                                 struct doca_flow_pipe_cfg *cfg,
-	                                 uint8_t type)
+	                                 __rte_unused uint8_t type)
 {
 	struct rte_vxlan_hdr vxlan_hdr;
 
@@ -710,7 +710,7 @@ static void doca_dpdk_build_raw_data(uint8_t **header,
 		memset(&gre_hdr, 0, sizeof(struct rte_gre_hdr));
 		gre_hdr.k = 1;
 		gre_hdr.proto = rte_cpu_to_be_16(protocol); // this limits the inner ip type to be the same asthe outer
-		memcpy(*header, &gre_hdr, sizeof(gre_hdr));
+		memcpy(header, &gre_hdr, sizeof(gre_hdr));
 		header += sizeof(gre_hdr);
 		key_data = (uint32_t *)(header);
 		*key_data = encap_data->tun.gre.key;
