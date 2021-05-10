@@ -215,6 +215,7 @@ build_fwd_pipe(struct doca_flow_port *port,uint16_t fwd_port_id)
 //    struct doca_flow_fwd fwd;
         
 	memset(&match, 0x0, sizeof(match));
+	memset(&pipe_cfg, 0, sizeof pipe_cfg);
     //build_match_5tuple(&match);
 	build_match_tun_and_5tuple(&match);
     build_decap_action(&actions);
