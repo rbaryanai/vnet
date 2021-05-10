@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2021 Mellanox Technologies, Ltd. ALL RIGHTS RESERVED.
+ *
+ * This software product is a proprietary product of Mellanox Technologies Ltd.
+ * (the "Company") and all right, title, and interest in and to the software
+ * product, including all associated intellectual property rights, are and
+ * shall remain exclusively with the Company.
+ *
+ * This software product is governed by the End User License Agreement
+ * provided with the software product.
+ *
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -261,7 +274,7 @@ static void gw_fill_monior(struct doca_flow_monitor *monitor)
  */
 static struct doca_flow_pipe *gw_build_ul_ol(struct doca_flow_port *port)
 {
-	struct doca_flow_pipe_cfg pipe_cfg = {0};
+	struct doca_flow_pipe_cfg pipe_cfg;
 	struct doca_flow_error err = {0};
 	struct doca_flow_match match;
 	struct doca_flow_actions actions = {0};
@@ -273,6 +286,7 @@ static struct doca_flow_pipe *gw_build_ul_ol(struct doca_flow_port *port)
 	gw_build_decap_inner_modify_actions(&actions);
 	gw_fill_monior(&monitor);
 
+	memset(&pipe_cfg, 0x0, sizeof(pipe_cfg));
 	pipe_cfg.name = "overlay-to-underlay";
 	pipe_cfg.port = port;
 	pipe_cfg.match = &match;
@@ -300,7 +314,7 @@ static struct doca_flow_pipe *gw_build_ul_ol(struct doca_flow_port *port)
  */
 static struct doca_flow_pipe *gw_build_ol_to_ol(struct doca_flow_port *port)
 {
-	struct doca_flow_pipe_cfg pipe_cfg = {0};
+	struct doca_flow_pipe_cfg pipe_cfg;
 	struct doca_flow_error err = {0};
 	struct doca_flow_match match;
 	struct doca_flow_actions actions = {0};
@@ -312,6 +326,7 @@ static struct doca_flow_pipe *gw_build_ol_to_ol(struct doca_flow_port *port)
 	gw_build_encap_actions(&actions);
 	gw_fill_monior(&monitor);
 
+	memset(&pipe_cfg, 0x0, sizeof(pipe_cfg));
 	pipe_cfg.name = "overlay-to-overlay";
 	pipe_cfg.port = port;
 	pipe_cfg.match = &match;
@@ -413,7 +428,7 @@ static void gw_pipe_set_entry_tun(struct doca_flow_match *match,
  *
  * @return
  */
-struct doca_flow_pipe_entry *
+static struct doca_flow_pipe_entry *
 gw_pipe_add_ol_to_ul_entry(struct doca_pkt_info *pinfo,
 			       struct doca_flow_pipe *pipe)
 {
@@ -448,7 +463,7 @@ gw_pipe_add_ol_to_ul_entry(struct doca_pkt_info *pinfo,
 	    sw_rss_fwd_tbl_port[pinfo->orig_port_id], &err);
 }
 
-struct doca_flow_pipe_entry *
+static struct doca_flow_pipe_entry *
 gw_pipe_add_ol_to_ol_entry(struct doca_pkt_info *pinfo,
 			       struct doca_flow_pipe *pipe)
 {
@@ -498,7 +513,7 @@ gw_pipe_add_ol_to_ol_entry(struct doca_pkt_info *pinfo,
             &err);
 }
 
-void gw_rm_pipe_entry(struct doca_flow_pipe_entry *entry)
+static void gw_rm_pipe_entry(struct doca_flow_pipe_entry *entry)
 {
 	doca_flow_rm_entry(0, entry);
 }

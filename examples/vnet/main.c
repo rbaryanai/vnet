@@ -1,3 +1,16 @@
+/*
+ * Copyright (C) 2021 Mellanox Technologies, Ltd. ALL RIGHTS RESERVED.
+ *
+ * This software product is a proprietary product of Mellanox Technologies Ltd.
+ * (the "Company") and all right, title, and interest in and to the software
+ * product, including all associated intellectual property rights, are and
+ * shall remain exclusively with the Company.
+ *
+ * This software product is governed by the End User License Agreement
+ * provided with the software product.
+ *
+ */
+
 #include <stdio.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -57,7 +70,7 @@ uint16_t nr_hairpinq = 0;
 static const char *pcap_file_name =
 	"/var/opt/rbaryanai/vnet/build/examples/vnet/test.pcap";
 static struct doca_vnf *vnf;
-static struct doca_pcap_hander *ph;
+static struct doca_pcap_handler *ph;
 
 struct vnf_per_core_params {
 	int ports[VNF_NUM_OF_PORTS];
