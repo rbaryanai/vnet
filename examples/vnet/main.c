@@ -70,7 +70,7 @@ uint16_t nr_hairpinq = 0;
 static const char *pcap_file_name =
 	"/var/opt/rbaryanai/vnet/build/examples/vnet/test.pcap";
 static struct doca_vnf *vnf;
-static struct doca_pcap_hander *ph;
+static struct doca_pcap_handler *ph;
 
 struct vnf_per_core_params {
 	int ports[VNF_NUM_OF_PORTS];
