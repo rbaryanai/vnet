@@ -188,8 +188,9 @@ struct doca_dpdk_action_data {
 struct doca_dpdk_action_entry {
 	struct rte_flow_action *action;
 	struct doca_dpdk_action_data action_data;
-	int (*modify_action)(struct doca_dpdk_action_entry *entry,
-		struct doca_flow_actions *action);
+	int (*modify_action)(struct doca_dpdk_pipe *pipe,
+            struct doca_dpdk_action_entry *entry,
+            struct doca_flow_actions *action);
 };
 
 struct doca_dpdk_pipe {

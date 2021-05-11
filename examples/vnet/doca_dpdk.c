@@ -659,14 +659,15 @@ static void doca_dpdk_build_raw_data(uint8_t **header,
 	}
 }
  static int
- doca_dpdk_modify_encap_action(struct doca_dpdk_action_entry *entry,
-         struct doca_flow_actions *pkt_action)
+ doca_dpdk_modify_encap_action(struct doca_dpdk_pipe *pipe,
+                               struct doca_dpdk_action_entry *entry,
+                               struct doca_flow_actions *pkt_action)
  {
-     uint8_t *header;
-	 uint16_t protocol;
-     struct rte_flow_action *action = entry->action;
-     struct doca_dpdk_action_rawencap_data *encap = &entry->action_data.rawencap;
-     struct doca_flow_encap_action *encap_data = &pkt_action->encap;
+	uint8_t *header;
+	uint16_t protocol;
+	struct rte_flow_action *action = entry->action;
+	struct doca_dpdk_action_rawencap_data *encap = &entry->action_data.rawencap;
+	struct doca_flow_encap_action *encap_data = &pkt_action->encap;
 
 	header = encap->data;
 	/* ETH */
@@ -794,8 +795,9 @@ static int doca_dpdk_build_decap(struct doca_dpdk_action_entry *entry,
 	}
 }
 
-static int doca_dpdk_modify_mac_action(struct doca_dpdk_action_entry *entry,
-				       struct doca_flow_actions *pkt_action)
+static int doca_dpdk_modify_mac_action(__rte_unused struct doca_dpdk_pipe *pipe,
+                                       struct doca_dpdk_action_entry *entry,
+                                       struct doca_flow_actions *pkt_action)
 {
 	uint8_t *mac_addr;
 	struct rte_flow_action *action = entry->action;
@@ -830,8 +832,9 @@ static void doca_dpdk_build_mac_action(struct doca_dpdk_action_entry *entry,
 }
 
 static int
-doca_dpdk_modify_ipv4_addr_action(struct doca_dpdk_action_entry *entry,
-				  struct doca_flow_actions *pkt_action)
+doca_dpdk_modify_ipv4_addr_action(__rte_unused struct doca_dpdk_pipe *pipe,
+                                  struct doca_dpdk_action_entry *entry,
+                                  struct doca_flow_actions *pkt_action)
 {
 	struct doca_ip_addr *ip_addr;
 	struct rte_flow_action *action = entry->action;
@@ -864,8 +867,9 @@ doca_dpdk_build_ipv4_addr_action(struct doca_dpdk_action_entry *entry,
 		entry->modify_action = doca_dpdk_modify_ipv4_addr_action;
 }
 
-static int doca_dpdk_modify_l4_port_action(struct doca_dpdk_action_entry *entry,
-					   struct doca_flow_actions *pkt_action)
+static int doca_dpdk_modify_l4_port_action(__rte_unused struct doca_dpdk_pipe *pipe,
+                                           struct doca_dpdk_action_entry *entry,
+                                           struct doca_flow_actions *pkt_action)
 {
 	uint16_t l4port;
 	struct rte_flow_action *action = entry->action;
@@ -1222,7 +1226,7 @@ static int doca_dpdk_modify_pipe_actions(struct doca_dpdk_pipe *pipe,
 		action_entry = &pipe->action_entry[idex];
 		if (action_entry->modify_action == NULL)
 			continue;
-		ret = action_entry->modify_action(action_entry, actions);
+		ret = action_entry->modify_action(pipe, action_entry, actions);
 		if (ret)
 			return ret;
 	}
