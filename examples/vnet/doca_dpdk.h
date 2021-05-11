@@ -156,6 +156,11 @@ struct doca_dpdk_action_rawencap_data {
 	uint16_t idx;
 };
 
+struct doca_dpdk_action_set_meta {
+    struct rte_flow_action_set_meta conf;
+    uint32_t data;
+};
+
 struct doca_dpdk_action_meter_data {
 	uint32_t prof_id;
 	uint32_t policy_id;
@@ -181,6 +186,7 @@ struct doca_dpdk_action_data {
 		struct doca_dpdk_action_rawdecap_data rawdecap;
 		struct doca_dpdk_action_rawencap_data rawencap;
 		struct doca_dpdk_action_meter_data meter;
+        struct doca_dpdk_action_set_meta meta;
         struct doca_dpdk_action_fwd_data fwd;
 	};
 };

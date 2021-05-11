@@ -662,16 +662,62 @@ static void doca_dpdk_build_raw_data(uint8_t **header,
 			layer->fill_data(header, cfg, type);
 	}
 }
- static int
- doca_dpdk_modify_encap_action(struct doca_dpdk_pipe *pipe,
-                               struct doca_dpdk_action_entry *entry,
-                               struct doca_flow_actions *pkt_action)
- {
+
+static struct rte_flow *
+doca_dpdk_create_flow(uint16_t port_id, const struct rte_flow_attr *attr,
+		      const struct rte_flow_item pattern[],
+		      const struct rte_flow_action actions[])
+{
+	struct rte_flow *flow;
+	struct rte_flow_error err;
+
+	doca_dump_rte_flow("create rte flow:", port_id, attr, pattern, actions);
+	flow = rte_flow_create(port_id, attr, pattern, actions, &err);
+	if (!flow) {
+		DOCA_LOG_ERR("Port %u create flow fail, type %d message: %s\n",
+			     port_id, err.type,
+			     err.message ? err.message : "(no stated reason)");
+	}
+	return flow;
+}
+
+static int
+doca_dpdk_add_tx_encap(int port_id, int meta_data,
+                   struct rte_flow_action_raw_encap *conf)
+{
+	struct rte_flow_attr attr;
+	struct rte_flow_item items[MAX_ITEMS];
+	struct rte_flow_action actions[MAX_ACTIONS];
+	struct rte_flow_action_set_meta meta;
+	struct rte_flow *ret;
+
+	memset(&attr, 0x0, sizeof(struct rte_flow_attr));
+	memset(items, 0x0, sizeof(items));
+	memset(actions, 0x0, sizeof(actions));
+	attr.group = 0;
+	attr.egress = 1;
+	meta.data = meta_data;
+	items[0].type = RTE_FLOW_ITEM_TYPE_META;
+	items[0].spec = &meta;
+	items[1].type = RTE_FLOW_ITEM_TYPE_END;
+	actions[0].type = RTE_FLOW_ACTION_TYPE_RAW_ENCAP;
+	actions[0].conf = conf;
+	ret = doca_dpdk_create_flow(!port_id, &attr, items, actions);
+	return doca_encap_table_udpate_data(meta_data, ret);
+}
+
+static int
+doca_dpdk_modify_encap_action(struct doca_dpdk_pipe *pipe,
+                              struct doca_dpdk_action_entry *entry,
+                              struct doca_flow_actions *pkt_action)
+{
+	int id;
 	uint8_t *header;
 	uint16_t protocol;
 	struct rte_flow_action *action = entry->action;
 	struct doca_dpdk_action_rawencap_data *encap = &entry->action_data.rawencap;
 	struct doca_flow_encap_action *encap_data = &pkt_action->encap;
+	struct doca_dpdk_action_set_meta *meta;
 
 	header = encap->data;
 	/* ETH */
@@ -704,6 +750,7 @@ static void doca_dpdk_build_raw_data(uint8_t **header,
 		ipv4_hdr.next_proto_id = IPPROTO_GRE;
 	else
 		return -1;
+	ipv4_hdr.version_ihl = 0x45;
 	memcpy(header, &ipv4_hdr, sizeof(ipv4_hdr));
 	header += sizeof(ipv4_hdr);
 
@@ -711,7 +758,7 @@ static void doca_dpdk_build_raw_data(uint8_t **header,
 		/* UDP */
 		struct rte_udp_hdr udp_hdr;
 		memset(&udp_hdr, 0, sizeof(struct rte_flow_item_udp));
-		udp_hdr.dst_port = DOCA_VXLAN_DEFAULT_PORT;
+		udp_hdr.dst_port = rte_cpu_to_be_16(DOCA_VXLAN_DEFAULT_PORT);
 		memcpy(header, &udp_hdr, sizeof(udp_hdr));
 		header += sizeof(udp_hdr);
 
@@ -740,25 +787,53 @@ static void doca_dpdk_build_raw_data(uint8_t **header,
 
 	encap->conf.data = encap->data;
 	encap->conf.size = header - encap->data;
-	action->conf = &encap->conf;
+
+	if (hw_steering) {
+		action->type = RTE_FLOW_ACTION_TYPE_RAW_ENCAP;
+		action->conf = &encap->conf;
+	} else {
+		id = doca_encap_table_add_id(encap_data);
+		meta = &entry->action_data.meta;
+		if (doca_encap_table_get_refcnt(id) == 1) {
+			if (!doca_dpdk_add_tx_encap(pipe->port_id, id, &encap->conf)) {
+				meta->data = id;
+				meta->conf.data = meta->data;
+				meta->conf.mask = UINT32_MAX;
+			}
+		}
+		action->type = RTE_FLOW_ACTION_TYPE_SET_META;
+		action->conf = &meta->conf;
+	}
 
 	return 0;
- }
+}
 
 static void doca_dpdk_build_encap_action(struct doca_dpdk_action_entry *entry,
-										 struct doca_flow_pipe_cfg *cfg, uint8_t layer)
+                                         struct doca_flow_pipe_cfg *cfg, uint8_t layer)
 {
 	uint8_t *header;
+	int id;
 	struct rte_flow_action *action = entry->action;
 	struct doca_dpdk_action_rawencap_data *encap;
+	struct doca_dpdk_action_set_meta *meta;
 
 	encap = &entry->action_data.rawencap;
+	meta = &entry->action_data.meta;
 	header = encap->data;
 	doca_dpdk_build_raw_data(&header, cfg, layer, DOCA_ENCAP);
-	encap->conf.data = encap->data;
-	encap->conf.size = header - encap->data;
-	action->type = RTE_FLOW_ACTION_TYPE_RAW_ENCAP;
-	action->conf = &encap->conf;
+	if (hw_steering) {
+		encap->conf.data = encap->data;
+		encap->conf.size = header - encap->data;
+		action->type = RTE_FLOW_ACTION_TYPE_RAW_ENCAP;
+		action->conf = &encap->conf;
+	} else {
+		id = doca_encap_table_add_id(&cfg->actions->encap);
+		meta->data = id;
+		meta->conf.data = meta->data;
+		meta->conf.mask = UINT32_MAX;
+		action->type = RTE_FLOW_ACTION_TYPE_SET_META;
+		action->conf = &meta->conf;
+	}
 	entry->modify_action = doca_dpdk_modify_encap_action;
 }
 
@@ -1235,24 +1310,6 @@ static int doca_dpdk_modify_pipe_actions(struct doca_dpdk_pipe *pipe,
 			return ret;
 	}
 	return 0;
-}
-
-static struct rte_flow *
-doca_dpdk_create_flow(uint16_t port_id, const struct rte_flow_attr *attr,
-		      const struct rte_flow_item pattern[],
-		      const struct rte_flow_action actions[])
-{
-	struct rte_flow *flow;
-	struct rte_flow_error err;
-
-	doca_dump_rte_flow("create rte flow:", port_id, attr, pattern, actions);
-	flow = rte_flow_create(port_id, attr, pattern, actions, &err);
-	if (!flow) {
-		DOCA_LOG_ERR("Port %u create flow fail, type %d message: %s\n",
-			     port_id, err.type,
-			     err.message ? err.message : "(no stated reason)");
-	}
-	return flow;
 }
 
 static struct rte_flow *doca_dpdk_create_root_jump(uint16_t port_id)
