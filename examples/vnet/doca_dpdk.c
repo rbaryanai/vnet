@@ -22,9 +22,11 @@
 #include "doca_debug_dpdk.h"
 #include "doca_log.h"
 #include "doca_id_pool.h"
+#include "doca_encap_table.h"
 
 //#define SUPPORT_METER 0
 #define DOCA_FLOW_MAX_PORTS (128)
+#define DOCA_MAX_ENCAPS (128)
 
 DOCA_LOG_MODULE(doca_dpdk);
 
@@ -41,6 +43,7 @@ struct doca_dpdk_fwd_conf {
 };
 
 static struct doca_flow_cfg doca_flow_cfg = {0};
+static bool hw_steering = false;
 
 struct doca_dpdk_engine doca_dpdk_engine;
 struct doca_dpdk_fwd_conf doca_dpdk_fwd_conf;
@@ -65,6 +68,7 @@ void doca_dpdk_init(struct doca_flow_cfg *cfg)
 	}
 	doca_dpdk_init_port(0);
 	doca_dpdk_init_port(1);
+	doca_encap_table_init(DOCA_MAX_ENCAPS);
         doca_flow_cfg = *cfg;
 }
 
