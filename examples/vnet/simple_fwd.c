@@ -311,6 +311,7 @@ sf_pipe_add_entry(struct doca_pkt_info *pinfo,
 	match.in_dst_port = doca_pinfo_inner_dst_port(pinfo);
 
 	actions.has_encap = true;
+	actions.encap.src_ip.type = DOCA_IPV4;
 	actions.encap.src_ip.a.ipv4_addr = doca_pinfo_outer_ipv4_dst(pinfo);
 	actions.encap.dst_ip.a.ipv4_addr = doca_pinfo_outer_ipv4_src(pinfo);
 
