@@ -114,7 +114,7 @@ static int doca_parse_pkt_format(uint8_t *data, int len, bool l2,
 			fmt->l3_type = 6;
 			return -1;
 		case RTE_ETHER_TYPE_ARP:
-                        return -1;
+			return -1;
 		default:
 			DOCA_LOG_WARN("unsupported l2 type %x",
 				eth->ether_type);

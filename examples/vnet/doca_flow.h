@@ -89,8 +89,7 @@ struct doca_flow_error {
  */
 struct doca_flow_cfg {
 	uint32_t total_sessions;
-	uint16_t
-	    queues; /* each offload thread should use a different queue id */
+	uint16_t queues; /* each offload thread should use a different queue id */
 	bool aging; /* when true, aging is handled by doca */
 };
 
@@ -181,12 +180,12 @@ enum {
 	DOCA_FLOW_AGING = (1 << 3),
 };
 
-enum doca_flow_fwd_type { 
-    DOCA_FWD_NONE = 0,
-    DOCA_FWD_RSS,
-    DOCA_FWD_PORT, 
-    DOCA_FWD_PIPE,
-    DOCA_FWD_DROP
+enum doca_flow_fwd_type {
+	DOCA_FWD_NONE = 0,
+	DOCA_FWD_RSS,
+	DOCA_FWD_PORT,
+	DOCA_FWD_PIPE,
+	DOCA_FWD_DROP
 };
 
 enum doca_rss_type {
@@ -199,22 +198,22 @@ enum doca_rss_type {
  * @brief - forwarding configuration
  */
 struct doca_flow_fwd {
-    enum doca_flow_fwd_type type;
-    union {
-        struct fwd_rss {
-                uint32_t rss_flags;
-                uint16_t *queues;
-                int num_queues;
-        } rss;
+	enum doca_flow_fwd_type type;
+	union {
+		struct fwd_rss {
+			uint32_t rss_flags;
+			uint16_t *queues;
+			int num_queues;
+		} rss;
 
-        struct port {
-                uint16_t id;
-        } port;
+		struct port {
+			uint16_t id;
+		} port;
 
-        struct next_pipelne {
-            struct doca_flow_pipe *next;
-        } next_pipe;
-    };
+		struct next_pipelne {
+			struct doca_flow_pipe *next;
+		} next_pipe;
+	};
 };
 
 
@@ -239,11 +238,10 @@ struct doca_flow_monitor {
  * @brief - pipe definition
  */
 struct doca_flow_pipe_cfg {
-        struct {
-            const char *name;
-            bool root; /* when true, first pipe executed on
-                          packet arrival */
-        };
+	struct {
+		const char *name;
+		bool root; /* when true, first pipe executed on packet arrival */
+	};
 	struct doca_flow_port *port;
 	struct doca_flow_match *match;
 	struct doca_flow_match *match_mask;
@@ -323,8 +321,7 @@ uint8_t *doca_flow_port_priv_data(struct doca_flow_port *p);
  */
 struct doca_flow_pipe *
 doca_flow_create_pipe(struct doca_flow_pipe_cfg *cfg,
-                      struct doca_flow_fwd *fwd,
-		      struct doca_flow_error *err);
+		struct doca_flow_fwd *fwd, struct doca_flow_error *err);
 
 /**
  * @brief
@@ -402,5 +399,5 @@ bool doca_flow_query_aging(struct doca_flow_pipe_entry *arr, int arr_len,
 void doca_flow_destroy(uint16_t port_id);
 void doca_flow_dump_pipe(uint16_t port_id);
 
-//struct doca_flow_fwd *doca_flow_fwd_cast(struct doca_flow_fwd_tbl *tbl);
+/* struct doca_flow_fwd *doca_flow_fwd_cast(struct doca_flow_fwd_tbl *tbl);*/
 #endif

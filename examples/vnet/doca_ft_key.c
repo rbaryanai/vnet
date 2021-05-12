@@ -16,10 +16,8 @@
 #include "rte_ip.h"
 #include "rte_tcp.h"
 #include "rte_udp.h"
-#include "gw.h"
 #include "doca_ft_key.h"
-
-
+#include "doca_pkt.h"
 
 int doca_ft_key_fill(struct doca_pkt_info *pinfo, struct doca_ft_key *key)
 {

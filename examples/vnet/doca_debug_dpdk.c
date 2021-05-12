@@ -184,24 +184,22 @@ static void doca_dump_gre_item_key(const struct rte_flow_item *item)
 
 static void doca_dump_raw_encap(const struct rte_flow_action_raw_encap *encap)
 {
-    uint32_t i;
+	uint32_t i;
 
-    doca_log_prefix_buff("set raw_encap 0 raw ");
-    for (i = 0; i < encap->size; i++) {
-        doca_log_prefix_buff("%02x", encap->data[i]);
-    }
-    doca_log_prefix_buff("\n");
+	doca_log_prefix_buff("set raw_encap 0 raw ");
+	for (i = 0; i < encap->size; i++)
+		doca_log_prefix_buff("%02x", encap->data[i]);
+	doca_log_prefix_buff("\n");
 }
 
 static void doca_dump_raw_decap(const struct rte_flow_action_raw_decap *decap)
 {
-    uint32_t i;
+	uint32_t i;
 
-    doca_log_prefix_buff("set raw_decap 0 raw ");
-    for (i = 0; i < decap->size; i++) {
-        doca_log_prefix_buff("%02x", decap->data[i]);
-    }
-    doca_log_prefix_buff("\n");
+	doca_log_prefix_buff("set raw_decap 0 raw ");
+	for (i = 0; i < decap->size; i++)
+		doca_log_prefix_buff("%02x", decap->data[i]);
+	doca_log_prefix_buff("\n");
 }
 
 void doca_dump_rte_flow(const char *name, uint16_t port_id,
@@ -342,7 +340,7 @@ void doca_dump_rte_flow(const char *name, uint16_t port_id,
 					actions->conf;
 
 			doca_dump_raw_decap(decap);
-			doca_log_buff("raw_decap index 0 / "); /*need dump decap buff?*/
+			doca_log_buff("raw_decap index 0 / ");
 			break;
 		case RTE_FLOW_ACTION_TYPE_RAW_ENCAP:
 			encap = (const struct rte_flow_action_raw_encap *)
@@ -507,12 +505,12 @@ void doca_dump_rte_mbuff(const char *name, struct rte_mbuf *mb)
 		return;
 	memset(dump_buff, 0x0, sizeof(dump_buff));
 	memset(prefix_buff, 0x0, sizeof(prefix_buff));
-	doca_log_buff("%sport:%d mbuff on core:%u,pkt_len:%u,"
-		"data_len:%u,nb_segs:%u,ol_flags:0x%lx\n",
-	    name, mb->port, rte_lcore_id(), mb->pkt_len,
-	    mb->data_len, mb->nb_segs, mb->ol_flags);
-	ethdr = (uint8_t *)((uintptr_t)rte_pktmbuf_read(mb, 0, sizeof(_eth_hdr),
-						     &_eth_hdr));
+	doca_log_buff(
+		"%sport:%d mbuff on core:%u,pkt_len:%u,data_len:%u,nb_segs:%u,ol_flags:0x%lx\n",
+		name, mb->port, rte_lcore_id(), mb->pkt_len,
+		mb->data_len, mb->nb_segs, mb->ol_flags);
+	ethdr = (uint8_t *)((uintptr_t)rte_pktmbuf_read(mb, 0,
+		sizeof(_eth_hdr), &_eth_hdr));
 	doca_dump_packet_buff(ethdr, mb->data_len);
 	DOCA_LOG_DBG("%s", dump_buff);
 }

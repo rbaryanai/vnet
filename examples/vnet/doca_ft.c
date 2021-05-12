@@ -64,6 +64,7 @@ struct doca_ft_cfg {
 struct doca_ft {
 	struct doca_ft_cfg cfg;
 	struct doca_ft_stats stats;
+
 	volatile int stop_aging_thread;
 	uint32_t fid_ctr;
 	struct doca_gauge *cps_gauge;
@@ -289,7 +290,7 @@ static int _doca_ft_destroy_flow(struct doca_ft *ft, struct doca_ft_key *key)
 	return 0;
 }
 
-int doca_ft_destory_flow(struct doca_ft *ft, struct doca_ft_key *key)
+int doca_ft_destroy_flow(struct doca_ft *ft, struct doca_ft_key *key)
 {
 	return _doca_ft_destroy_flow(ft, key);
 }

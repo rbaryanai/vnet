@@ -96,7 +96,7 @@ int sf_start_dpdk_port(struct sf_port_cfg *port)
 		}
 	}
 
-    total_queues = nr_queues + port->nb_hairpinq;
+	total_queues = nr_queues + port->nb_hairpinq;
 	ret = rte_eth_dev_info_get(port_id, &dev_info);
 	if (ret != 0)
 		rte_exit(EXIT_FAILURE,
@@ -116,8 +116,7 @@ int sf_start_dpdk_port(struct sf_port_cfg *port)
 	rxq_conf.offloads = port_conf.rxmode.offloads;
 	for (i = 0; i < total_queues; i++) {
 		ret = rte_eth_rx_queue_setup(port_id, i, port->nb_desc,
-                                    rte_eth_dev_socket_id(port_id),
-                                    &rxq_conf, mbuf_pool);
+			rte_eth_dev_socket_id(port_id), &rxq_conf, mbuf_pool);
 		if (ret < 0) {
 			rte_exit(EXIT_FAILURE,
 				 ":: Rx queue setup failed: err=%d, port=%u\n",
@@ -130,8 +129,7 @@ int sf_start_dpdk_port(struct sf_port_cfg *port)
 
 	for (i = 0; i < total_queues; i++) {
 		ret = rte_eth_tx_queue_setup(port_id, i, port->nb_desc,
-                                     rte_eth_dev_socket_id(port_id),
-                                     &txq_conf);
+			rte_eth_dev_socket_id(port_id), &txq_conf);
 		if (ret < 0) {
 			rte_exit(EXIT_FAILURE,
 				 ":: Tx queue setup failed: err=%d, port=%u\n",
@@ -160,7 +158,7 @@ int sf_start_dpdk_port(struct sf_port_cfg *port)
 			if (ret != 0)
 				rte_exit(EXIT_FAILURE, "Hairpin tx queue setup failed: err=%d, port=%u\n", ret, port_id);
 		}
-    }
+	}
 	ret = rte_eth_dev_start(port_id);
 	if (ret < 0) {
 		rte_exit(EXIT_FAILURE, "rte_eth_dev_start:err=%d, port=%u\n",
@@ -204,21 +202,18 @@ static void gw_port_stats_display(uint16_t port_id)
 	       port_id, nic_stats_border);
 
 	printf("  RX-packets: %-10" PRIu64 " RX-missed: %-10" PRIu64
-	       " RX-bytes:  "
-	       "%-" PRIu64 "\n",
+	       " RX-bytes:  %-" PRIu64 "\n",
 	       stats.ipackets, stats.imissed, stats.ibytes);
 	printf("  RX-errors: %-" PRIu64 "\n", stats.ierrors);
 	printf("  RX-nombuf:  %-10" PRIu64 "\n", stats.rx_nombuf);
 	printf("  TX-packets: %-10" PRIu64 " TX-errors: %-10" PRIu64
-	       " TX-bytes:  "
-	       "%-" PRIu64 "\n",
+	       " TX-bytes:  %-" PRIu64 "\n",
 	       stats.opackets, stats.oerrors, stats.obytes);
 
 	printf("\n");
 	for (i = 0; i < dev_info.nb_rx_queues; i++) {
 		printf("  Stats reg %2d RX-packets: %-10" PRIu64
-		       "  RX-errors: %-10" PRIu64 "  RX-bytes: %-10" PRIu64
-		       "\n",
+		       "  RX-errors: %-10" PRIu64 "  RX-bytes: %-10" PRIu64"\n",
 		       i, stats.q_ipackets[i], stats.q_errors[i],
 		       stats.q_ibytes[i]);
 	}

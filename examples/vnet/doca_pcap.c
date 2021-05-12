@@ -18,7 +18,7 @@
 #include "doca_pcap.h"
 
 static const uint32_t DP_MAGIC_NUM_FLIP = 0xd4c3b2a1;
-static const uint32_t DP_MAGIC_NUM_DONT_FLIP = 0xa1b2c3d4;
+static const uint32_t DP_MAGIC_NUM_NOT_FLIP = 0xa1b2c3d4;
 static int DP_FLIP;
 
 struct doca_pcap_handler {
@@ -52,7 +52,7 @@ struct doca_pcap_handler *doca_pcap_file_start(const char *filename)
 	if (!fd)
 		return NULL;
 
-	hdr.magicNum = DP_FLIP ? DP_MAGIC_NUM_FLIP : DP_MAGIC_NUM_DONT_FLIP;
+	hdr.magicNum = DP_FLIP ? DP_MAGIC_NUM_FLIP : DP_MAGIC_NUM_NOT_FLIP;
 	hdr.vmajor = 2;
 	hdr.vminor = 4;
 	hdr.timezome = 0;
@@ -61,8 +61,7 @@ struct doca_pcap_handler *doca_pcap_file_start(const char *filename)
 	hdr.linktype = 1;
 
 	n = fwrite(&hdr, 1, sizeof(struct pcap_file_header), fd);
-	p_handler =
-	    (struct doca_pcap_handler *)malloc(sizeof(struct doca_pcap_handler));
+	p_handler = (struct doca_pcap_handler *)malloc(sizeof(struct doca_pcap_handler));
 
 	if (n != sizeof(struct pcap_file_header) || p_handler == NULL) {
 		fclose(fd);
