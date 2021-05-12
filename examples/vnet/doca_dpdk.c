@@ -647,12 +647,37 @@ static void doca_dpdk_build_gre_header(uint8_t **header,
 	*header += sizeof(uint32_t);
 }
 
+static void
+doca_dpdk_build_ipv6_header(uint8_t **header,
+	                     struct doca_flow_encap_action *encap_data, uint8_t type,
+						 __rte_unused uint16_t vlan_id)
+{
+	struct rte_ipv6_hdr ipv6_hdr;
+
+	memset(&ipv6_hdr, 0, sizeof(struct rte_ipv6_hdr));
+	if (type == DOCA_ENCAP) {
+		if (!doca_is_ip_zero(&encap_data->src_ip))
+			memcpy(ipv6_hdr.src_addr, encap_data->src_ip.a.ipv6_addr,
+			    sizeof *ipv6_hdr.src_addr);
+		if (!doca_is_ip_zero(&encap_data->dst_ip))
+			memcpy(ipv6_hdr.dst_addr, encap_data->dst_ip.a.ipv6_addr,
+			    sizeof *ipv6_hdr.dst_addr);
+		if (encap_data->tun.type == DOCA_TUN_VXLAN)
+			ipv6_hdr.proto = IPPROTO_UDP;
+		else if (encap_data->tun.type == DOCA_TUN_GRE)
+			ipv6_hdr.proto = IPPROTO_GRE;
+	}
+	memcpy(*header, &ipv6_hdr, sizeof(ipv6_hdr));
+	*header += sizeof(ipv6_hdr);
+}
+
 struct endecap_layer doca_endecap_layers[] = {
 	{FILL_ETH_HDR, doca_dpdk_build_ether_header},
 	{FILL_IPV4_HDR, doca_dpdk_build_ipv4_header},
 	{FILL_UDP_HDR, doca_dpdk_build_udp_header},
 	{FILL_VXLAN_HDR, doca_dpdk_build_vxlan_header},
 	{FILL_GRE_HDR, doca_dpdk_build_gre_header},
+	{FILL_IPV6_HDR, doca_dpdk_build_ipv6_header},
 };
 
 static void doca_dpdk_build_raw_data(uint8_t **header,

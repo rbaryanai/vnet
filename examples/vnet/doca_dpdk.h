@@ -236,6 +236,7 @@ enum DOCA_DECAP_HDR {
 	FILL_UDP_HDR = (1 << 2),
 	FILL_VXLAN_HDR = (1 << 3),
 	FILL_GRE_HDR = (1 << 4),
+	FILL_IPV6_HDR = (1 << 5),
 };
 
 /*need move to util file ??*/
