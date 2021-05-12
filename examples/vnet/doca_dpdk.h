@@ -143,6 +143,11 @@ struct doca_dpdk_action_rss_data {
 	uint16_t queue[128];
 };
 
+struct doca_dpdk_action_mark_data {
+	struct rte_flow_action_mark conf;
+	uint32_t id;
+};
+
 struct doca_dpdk_action_rawdecap_data {
 	struct rte_flow_action_raw_decap conf;
 	uint8_t data[128];
@@ -181,7 +186,8 @@ struct doca_dpdk_action_data {
 		struct doca_dpdk_action_rawdecap_data rawdecap;
 		struct doca_dpdk_action_rawencap_data rawencap;
 		struct doca_dpdk_action_meter_data meter;
-        struct doca_dpdk_action_fwd_data fwd;
+		struct doca_dpdk_action_fwd_data fwd;
+		struct doca_dpdk_action_mark_data mark;
 	};
 };
 

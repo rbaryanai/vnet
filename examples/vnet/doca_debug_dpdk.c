@@ -204,6 +204,14 @@ static void doca_dump_raw_decap(const struct rte_flow_action_raw_decap *decap)
     doca_log_prefix_buff("\n");
 }
 
+static void doca_dump_mark_item(const struct rte_flow_item *item)
+{
+    const struct rte_flow_item_mark *mark =
+	    (const struct rte_flow_item_mark *)item->spec;
+
+    doca_log_buff("mark id is %u / ", mark->id);
+}
+
 void doca_dump_rte_flow(const char *name, uint16_t port_id,
 			const struct rte_flow_attr *attr,
 			const struct rte_flow_item items[],
@@ -245,6 +253,12 @@ void doca_dump_rte_flow(const char *name, uint16_t port_id,
 			break;
 		case RTE_FLOW_ITEM_TYPE_GRE_KEY:
 			doca_dump_gre_item_key(items);
+			break;
+		case RTE_FLOW_ITEM_TYPE_META:
+			doca_dump_meta_item(items);
+			break;
+		case RTE_FLOW_ITEM_TYPE_MARK:
+			doca_dump_mark_item(items);
 			break;
 		default:
 			doca_log_buff("not support item:%u\n", item_type);
