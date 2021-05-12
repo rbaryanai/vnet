@@ -159,6 +159,7 @@ struct doca_dpdk_action_rawencap_data {
 	uint8_t data[128];
 	uint8_t preserve[128];
 	uint16_t idx;
+	uint8_t layer;
 };
 
 struct doca_dpdk_action_set_meta {
@@ -226,7 +227,7 @@ struct doca_dpdk_pipe_list {
 
 struct endecap_layer {
 	uint16_t layer;
-	void (*fill_data)(uint8_t **, struct doca_flow_pipe_cfg *, uint8_t);
+	void (*fill_data)(uint8_t **, struct doca_flow_encap_action *, uint8_t, uint16_t);
 };
 
 enum DOCA_DECAP_HDR {
