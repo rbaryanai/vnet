@@ -1017,17 +1017,30 @@ static int doca_dpdk_build_rss_action(struct doca_dpdk_action_entry *entry,
 				      struct doca_flow_fwd *fwd_cfg)
 {
 	int qidx;
-	struct rte_flow_action *action = entry->action;
-	struct doca_dpdk_action_rss_data *rss = &entry->action_data.rss;
+	struct rte_flow_action *rss_action;
+	struct doca_dpdk_action_rss_data *rss;
 
+	if (fwd_cfg->rss.mark) {
+		struct doca_dpdk_action_mark_data *mark = &entry->action_data.mark;
+		struct rte_flow_action *mark_action = entry->action;
+
+		mark->id = fwd_cfg->rss.mark;
+		mark->conf.id = mark->id;
+		mark_action->type = RTE_FLOW_ACTION_TYPE_MARK;
+		mark_action->conf = &mark->conf;
+		entry++;
+	}
+
+	rss_action = entry->action;
+	rss = &entry->action_data.rss;
 	rss->conf.queue_num = fwd_cfg->rss.num_queues;
 	for (qidx = 0; qidx < fwd_cfg->rss.num_queues; qidx++)
 		rss->queue[qidx] = fwd_cfg->rss.queues[qidx];
 	rss->conf.func = RTE_ETH_HASH_FUNCTION_DEFAULT;
 	rss->conf.types = doca_dpdk_get_rss_type(fwd_cfg->rss.rss_flags);
 	rss->conf.queue = rss->queue;
-	action->type = RTE_FLOW_ACTION_TYPE_RSS;
-	action->conf = &rss->conf;
+	rss_action->type = RTE_FLOW_ACTION_TYPE_RSS;
+	rss_action->conf = &rss->conf;
 	return 0;
 }
 
@@ -1059,7 +1072,7 @@ static int doca_dpdk_build_fwd(struct doca_dpdk_pipe *pipe,
 	int idx;
 
 	if (entry && pipe->nb_actions_pipe) {
-		idx = pipe->nb_actions_pipe -1;
+		idx = pipe->nb_actions_pipe - (1 + (fwd_cfg->rss.mark > 0));
 	} else {
 		idx = pipe->nb_actions_pipe;
 	}
@@ -1081,7 +1094,7 @@ static int doca_dpdk_build_fwd(struct doca_dpdk_pipe *pipe,
 	default:
 		return 1;
 	}
-	idx++;
+	fwd_cfg->rss.mark ? idx+=2 : idx++;
 	pipe->nb_actions_pipe = idx;
 	return 0;
 }
@@ -1357,7 +1370,7 @@ static struct rte_flow *doca_dpdk_pipe_create_entry_flow(
 		DOCA_LOG_ERR("build pipe meter action fail.");
 		return NULL;
 	}
-	if (!pipe->meter_info) {
+	if (!pipe->meter_info && cfg) {
 		int ret;
 
 		ret = doca_dpdk_build_fwd(pipe, cfg, true);
@@ -1479,8 +1492,7 @@ static int doca_dpdk_create_pipe_flow(struct doca_dpdk_pipe *flow,
 			return -1;
 		}
 	}
-	if (fwd && fwd->type == DOCA_FWD_PORT)
-	{
+	if (fwd) {
 	    doca_dpdk_build_fwd(flow, fwd, false);
 	}
 
