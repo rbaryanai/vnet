@@ -1179,7 +1179,7 @@ doca_dpdk_create_meter_rule(int port_id, uint32_t meter_info,
                             uint32_t meter_id)
 
 {
-#ifdef SUPPORT_METER 
+#ifdef SUPPORT_METER
 	struct rte_mtr_params params;
 	struct rte_mtr_error error;
 	int ret;
@@ -1207,7 +1207,7 @@ static int
 doca_dpdk_create_meter_policy(uint16_t port_id, uint32_t policy_id,
                               struct doca_flow_monitor *mon)
 {
-#ifdef SUPPORT_METER 
+#ifdef SUPPORT_METER
 	struct rte_flow_action g_actions[2], r_actions[2];
 	struct rte_mtr_meter_policy_params params;
 	struct doca_flow_fwd *fwd = &mon->m.fwd;
@@ -1402,7 +1402,8 @@ doca_dpdk_create_def_rss(uint16_t port_id)
 }
 
 static struct rte_flow *
-doca_dpdk_add_new_pipe_entry(struct doca_dpdk_pipe *pipe,
+doca_dpdk_add_new_pipe_entry(__rte_unused uint16_t pipe_queue,
+                             struct doca_dpdk_pipe *pipe,
                              struct doca_flow_pipe_entry *entry,
                              struct doca_flow_match *match,
                              struct doca_flow_actions *actions,
@@ -1467,7 +1468,7 @@ doca_dpdk_add_pipe_entry(struct doca_flow_pipe *pipe,
 	    sizeof(struct doca_flow_pipe_entry));
 	if (entry == NULL)
 		return NULL;
-	entry->pipe_entry = doca_dpdk_add_new_pipe_entry(
+	entry->pipe_entry = doca_dpdk_add_new_pipe_entry(pipe_queue,
 	    &pipe->flow, entry, match, actions, mon, cfg, err);
 	if (entry->pipe_entry == NULL) {
 		DOCA_LOG_INFO("create pip entry fail,idex:%d",
@@ -1578,7 +1579,7 @@ doca_dpdk_create_pipe(struct doca_flow_pipe_cfg *cfg,
 	static uint32_t pipe_id = 1;
 	struct doca_flow_pipe *pl;
 	struct doca_dpdk_pipe *flow;
-        int pipe_size = sizeof(struct doca_flow_pipe) + 
+        int pipe_size = sizeof(struct doca_flow_pipe) +
                             sizeof(LIST_HEAD(, doca_flow_pipe_entry))*doca_flow_cfg.queues;
 	DOCA_LOG_DBG("port:%u create pipe:%s\n", cfg->port->port_id, cfg->name);
 	doca_dump_flow_match(cfg->match);

@@ -64,7 +64,7 @@ static volatile bool force_quit;
 uint16_t nr_queues = 4;
 uint16_t rx_only = 0;
 uint16_t hw_offload = 1;
-uint64_t stats_timer = 1;
+uint64_t stats_timer = 0;
 uint16_t nr_hairpinq = 0;
 
 static const char *pcap_file_name =
@@ -75,7 +75,7 @@ static struct doca_pcap_handler *ph;
 struct vnf_per_core_params {
 	int ports[VNF_NUM_OF_PORTS];
 	int queues[VNF_NUM_OF_PORTS];
-	int core_id;
+	uint16_t core_id;
 	bool used;
 };
 struct vnf_per_core_params core_params_arr[RTE_MAX_LCORE];
@@ -142,12 +142,14 @@ static int gw_process_pkts(void *p)
 			for (j = 0; j < nb_rx; j++) {
 				if (hw_offload)
 					gw_process_offload(mbufs[j]);
+
 				if (rx_only)
 					rte_pktmbuf_free(mbufs[j]);
-				else
-					rte_eth_tx_burst(port_id == 0 ? 1 : 0,
-							 queue_id, &mbufs[j],
+				else  
+                                    rte_eth_tx_burst(port_id == 0 ? 1 : 0,
+                                                     queue_id, &mbufs[j],
 							 1);
+
 			}
 		}
 	}
@@ -171,9 +173,11 @@ static void signal_handler(int signum)
 static int count_lcores(void)
 {
 	int cores = 0;
-
-	while (core_params_arr[cores].used)
+        int i = 0;
+        for (i=0 ; i<RTE_MAX_LCORE ;i++) {
+            if (core_params_arr[i].used)
 		cores++;
+        }
 	return cores;
 }
 
@@ -274,17 +278,19 @@ static int init_dpdk(int argc, char **argv)
 	argv += ret;
 	gw_info_parse_args(argc, argv);
 
-	for (i = 0; i < nr_queues; i++) {
-		if (rte_lcore_is_enabled(i)) {
-			core_params_arr[core_idx].ports[0] = 0;
-			core_params_arr[core_idx].ports[1] = 1;
-			core_params_arr[core_idx].queues[0] = core_idx;
-			core_params_arr[core_idx].queues[1] = core_idx;
-			core_params_arr[core_idx].core_id = i;
-			core_params_arr[core_idx].used = true;
-			core_idx++;
-		}
-	}
+	for (i = 0; i < nr_queues && core_idx < RTE_MAX_LCORE; i++) {
+                while(!rte_lcore_is_enabled(core_idx) &&
+                        core_idx < RTE_MAX_LCORE) 
+                        core_idx++;
+
+                core_params_arr[core_idx].ports[0] = 0;
+                core_params_arr[core_idx].ports[1] = 1;
+                core_params_arr[core_idx].queues[0] = i;
+                core_params_arr[core_idx].queues[1] = i;
+                core_params_arr[core_idx].core_id = core_idx;
+                core_params_arr[core_idx].used = true;
+                core_idx++;
+        }
 	nr_ports = rte_eth_dev_count_avail();
 	if (nr_ports == 0) {
 		DOCA_LOG_CRIT("no Ethernet ports found\n");
@@ -306,6 +312,7 @@ int main(int argc, char **argv)
 	int i = 0;
 	uint16_t port_id;
 	struct sf_port_cfg port_cfg = {0};
+        bool me = false;
 
 	if (init_dpdk(argc, argv)) {
 		rte_exit(EXIT_FAILURE, "Cannot init dpdk\n");
@@ -314,6 +321,7 @@ int main(int argc, char **argv)
 
 	port_cfg.nb_queues = nr_queues;
 	port_cfg.nb_hairpinq = nr_hairpinq;
+        port_cfg.nb_desc = 512;
 	RTE_ETH_FOREACH_DEV(port_id) {
 		port_cfg.port_id = port_id;
 		sf_start_dpdk_port(&port_cfg);
@@ -327,16 +335,23 @@ int main(int argc, char **argv)
 	DOCA_LOG_INFO("VNF initiated!\n");
 	if (capture_en)
 		ph = doca_pcap_file_start(pcap_file_name);
-	i = 1;
-	while (core_params_arr[i].used) {
+
+	for ( i = 0 ;  i < RTE_MAX_LCORE ; i++) {
+                if (core_params_arr[i].used) {
+                    if (rte_lcore_id() == core_params_arr[i].core_id) {
+                        me = true;
+                        continue;
+                    }
 		rte_eal_remote_launch((lcore_function_t *)gw_process_pkts,
 				      &core_params_arr[i],
 				      core_params_arr[i].core_id);
-		i++;
+                }
 	}
 
+        if (!me)
+            rte_eal_mp_wait_lcore();
 	/* use main lcode as a thread.*/
-	gw_process_pkts(&core_params_arr[i]);
+        else gw_process_pkts(&core_params_arr[rte_lcore_id()]);
 	vnf->doca_vnf_destroy();
 
 	RTE_ETH_FOREACH_DEV(port_id)
