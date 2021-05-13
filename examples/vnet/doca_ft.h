@@ -49,6 +49,6 @@ bool doca_ft_add_new(struct doca_ft *ft, struct doca_pkt_info *pinfo,
 bool doca_ft_find(struct doca_ft *ft, struct doca_pkt_info *pinfo,
 		  struct doca_ft_user_ctx **ctx);
 
-int doca_ft_destory_flow(struct doca_ft *ft, struct doca_ft_key *key);
+int doca_ft_destroy_flow(struct doca_ft *ft, struct doca_ft_key *key);
 
 #endif

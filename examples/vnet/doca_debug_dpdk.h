@@ -23,18 +23,18 @@ enum {
 
 #define MAX_TMP_BUFF 1024
 
-#define doca_log_buff(fmt, args...)                                            \
+#define doca_log_buff(fmt, args...)                        \
 	sprintf(dump_buff + strlen(dump_buff), fmt, ##args)
-#define doca_log_prefix_buff(fmt, args...)                                            \
+#define doca_log_prefix_buff(fmt, args...)                 \
 	sprintf(prefix_buff + strlen(prefix_buff), fmt, ##args)
-#define doca_log_ipv4(item, ipv4_addr)                                         \
-	doca_log_buff("%s%d.%d.%d.%d ", item, (ipv4_addr >> 24) & 0xFF,        \
-		      (ipv4_addr >> 16) & 0xFF, (ipv4_addr >> 8) & 0xFF,       \
-		      ipv4_addr & 0xFF)
-#define doca_log_mac(item, eth_addr)                                           \
-	doca_log_buff("%s%02X:%02X:%02X:%02X:%02X:%02X ", item, eth_addr[0],   \
-		      eth_addr[1], eth_addr[2], eth_addr[3], eth_addr[4],      \
-		      eth_addr[5])
+#define doca_log_ipv4(item, ipv4_addr)						\
+	doca_log_buff("%s%d.%d.%d.%d ", item,					\
+		(ipv4_addr >> 24) & 0xFF, (ipv4_addr >> 16) & 0xFF,	\
+		(ipv4_addr >> 8) & 0xFF,  ipv4_addr & 0xFF)
+#define doca_log_mac(item, eth_addr)						\
+	doca_log_buff("%s%02X:%02X:%02X:%02X:%02X:%02X ",		\
+		item, eth_addr[0],  eth_addr[1], eth_addr[2],		\
+		eth_addr[3], eth_addr[4],  eth_addr[5])
 
 struct dump_hdr {
 	uint8_t protocal;

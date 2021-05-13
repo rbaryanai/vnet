@@ -133,9 +133,13 @@ struct doca_flow_fwd *fwd_tbl_port[GW_MAX_PORT_ID];
 
 static struct doca_flow_fwd *gw_build_port_fwd(int port_id)
 {
-        struct doca_flow_fwd *fwd = malloc(sizeof(struct doca_flow_fwd));
-        memset(fwd,0,sizeof(struct doca_flow_fwd));
-        fwd->type = DOCA_FWD_PORT;
+	struct doca_flow_fwd *fwd;
+
+	fwd = malloc(sizeof(struct doca_flow_fwd));
+	if (fwd == NULL)
+		return NULL;
+	memset(fwd, 0, sizeof(struct doca_flow_fwd));
+	fwd->type = DOCA_FWD_PORT;
 	fwd->port.id = port_id;
 	return fwd;
 }
@@ -144,11 +148,18 @@ static struct doca_flow_fwd *gw_build_port_fwd(int port_id)
 static struct doca_flow_fwd *gw_build_rss_fwd(int n_queues)
 {
 	int i;
-        struct doca_flow_fwd *fwd = malloc(sizeof(struct doca_flow_fwd));
+	struct doca_flow_fwd *fwd;
 	uint16_t *queues;
-        memset(fwd,0,sizeof(struct doca_flow_fwd));
 
+	fwd = malloc(sizeof(struct doca_flow_fwd));
+	if (fwd == NULL)
+		return NULL;
+	memset(fwd, 0, sizeof(struct doca_flow_fwd));
 	queues = malloc(sizeof(uint16_t) * n_queues);
+	if (queues == NULL) {
+		free(fwd);
+		return NULL;
+	}
 	for (i = 1; i < n_queues; i++)
 		queues[i - 1] = i;
 	fwd->type = DOCA_FWD_RSS;
@@ -509,8 +520,7 @@ gw_pipe_add_ol_to_ol_entry(struct doca_pkt_info *pinfo,
 	memset(actions.encap.src_mac, 0xff, sizeof(actions.encap.src_mac));
 	return doca_flow_pipe_add_entry(
 	    0, pipe, &match, &actions, &monitor,
-	    fwd_tbl_port[gw_slb_peer_port(pinfo->orig_port_id)],
-            &err);
+	    fwd_tbl_port[gw_slb_peer_port(pinfo->orig_port_id)], &err);
 }
 
 static void gw_rm_pipe_entry(struct doca_flow_pipe_entry *entry)
@@ -548,8 +558,10 @@ static int gw_init_doca_ports_and_pipes(int ret, int nr_queues)
 	struct gw_port_cfg cfg_port0 = {.n_queues = nr_queues, .port_id = 0};
 	struct gw_port_cfg cfg_port1 = {.n_queues = nr_queues, .port_id = 1};
 	struct doca_flow_error err = {0};
-	struct doca_flow_cfg cfg = {.total_sessions = GW_MAX_FLOWS,
-                                    .queues = nr_queues};
+	struct doca_flow_cfg cfg = {
+		.total_sessions = GW_MAX_FLOWS,
+		.queues = nr_queues
+	};
 
 	if (ret)
 		return ret;

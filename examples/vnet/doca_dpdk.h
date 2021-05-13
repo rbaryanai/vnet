@@ -167,8 +167,8 @@ struct doca_dpdk_action_l4_port_data {
 };
 
 struct doca_dpdk_action_fwd_data {
-    struct rte_flow_action_queue queue_conf;
-    struct rte_flow_action_port_id port_id_conf;
+	struct rte_flow_action_queue queue_conf;
+	struct rte_flow_action_port_id port_id_conf;
 };
 
 struct doca_dpdk_action_data {
@@ -181,7 +181,7 @@ struct doca_dpdk_action_data {
 		struct doca_dpdk_action_rawdecap_data rawdecap;
 		struct doca_dpdk_action_rawencap_data rawencap;
 		struct doca_dpdk_action_meter_data meter;
-        struct doca_dpdk_action_fwd_data fwd;
+		struct doca_dpdk_action_fwd_data fwd;
 	};
 };
 
@@ -203,6 +203,7 @@ struct doca_dpdk_pipe {
 	struct doca_dpdk_item_entry item_entry[MAX_ITEMS];
 	struct rte_flow_action actions[MAX_ACTIONS];
 	struct doca_dpdk_action_entry action_entry[MAX_ACTIONS];
+
 	LIST_ENTRY(doca_dpdk_pipe) free_list;
 };
 
@@ -213,7 +214,7 @@ struct doca_dpdk_pipe_list {
 
 struct endecap_layer {
 	uint16_t layer;
-	void (*fill_data)(uint8_t **, struct doca_flow_pipe_cfg *, uint8_t);
+	void (*fill_data)(uint8_t **header, struct doca_flow_pipe_cfg *cfg, uint8_t type);
 };
 
 enum DOCA_DECAP_HDR {
@@ -228,6 +229,7 @@ enum DOCA_DECAP_HDR {
 static inline bool doca_is_mac_zero(void *mac_addr)
 {
 	uint16_t *addr = mac_addr;
+
 	return (addr[0] | addr[1] | addr[2]) == 0;
 }
 
@@ -243,6 +245,7 @@ static inline void doca_set_mac_max(void *mac_addr)
 static inline bool doca_is_mac_max(void *mac_addr)
 {
 	uint16_t *addr = mac_addr;
+
 	return addr[0] == UINT16_MAX && addr[1] == UINT16_MAX &&
 	       addr[2] == UINT16_MAX;
 }
@@ -250,6 +253,7 @@ static inline bool doca_is_mac_max(void *mac_addr)
 static inline bool doca_is_ip_zero(struct doca_ip_addr *ip_addr)
 {
 	uint64_t *addr = (uint64_t *)(&ip_addr->a);
+
 	if (ip_addr->type == DOCA_IPV6)
 		return addr[0] == 0 && addr[1] == 0;
 	return ip_addr->a.ipv4_addr == 0;
@@ -258,6 +262,7 @@ static inline bool doca_is_ip_zero(struct doca_ip_addr *ip_addr)
 static inline bool doca_is_ip_max(struct doca_ip_addr *ip_addr)
 {
 	uint64_t *addr = (uint64_t *)(&ip_addr->a);
+
 	if (ip_addr->type == DOCA_IPV6)
 		return addr[0] == UINT64_MAX && addr[1] == UINT64_MAX;
 	return ip_addr->a.ipv4_addr == UINT32_MAX;
@@ -266,6 +271,7 @@ static inline bool doca_is_ip_max(struct doca_ip_addr *ip_addr)
 static inline void doca_set_item_ipv6_max(void *ip6_addr)
 {
 	uint64_t *addr = (uint64_t *)ip6_addr;
+
 	addr[0] = UINT64_MAX;
 	addr[1] = UINT64_MAX;
 }
@@ -273,6 +279,7 @@ static inline void doca_set_item_ipv6_max(void *ip6_addr)
 static inline void doca_set_item_vni_max(void *vni)
 {
 	uint8_t *addr = (uint8_t *)vni;
+
 	addr[0] = UINT8_MAX;
 	addr[1] = UINT8_MAX;
 	addr[2] = UINT8_MAX;
@@ -283,14 +290,12 @@ static inline bool doca_match_is_ipv4(struct doca_flow_match *match,
 {
 	struct doca_ip_addr ip_addr;
 
-	// need confim: must set src or dst;
 	if (type == INNER_MATCH)
-		ip_addr = match->in_src_ip.type != DOCA_NONE ? match->in_src_ip
-							     : match->in_dst_ip;
+		ip_addr = match->in_src_ip.type != DOCA_NONE
+			? match->in_src_ip : match->in_dst_ip;
 	else
 		ip_addr = match->out_src_ip.type != DOCA_NONE
-			      ? match->out_src_ip
-			      : match->out_dst_ip;
+			? match->out_src_ip : match->out_dst_ip;
 	return (ip_addr.type == DOCA_IPV4);
 }
 
@@ -298,12 +303,12 @@ static inline rte_be16_t doca_dpdk_get_l3_protol(struct doca_flow_match *match,
 						 uint8_t type)
 {
 	uint16_t protocol;
+
 	if (type == OUTER_MATCH && match->vlan_id)
 		protocol = RTE_ETHER_TYPE_VLAN;
 	else
 		protocol = doca_match_is_ipv4(match, type)
-			       ? RTE_ETHER_TYPE_IPV4
-			       : RTE_ETHER_TYPE_IPV6;
+				? RTE_ETHER_TYPE_IPV4 : RTE_ETHER_TYPE_IPV6;
 	return rte_cpu_to_be_16(protocol);
 }
 
@@ -325,12 +330,11 @@ void doca_dpdk_init(struct doca_flow_cfg *cfg);
 
 struct doca_flow_pipe *
 doca_dpdk_create_pipe(struct doca_flow_pipe_cfg *cfg,
-                      struct doca_flow_fwd *fwd,
-		      struct doca_flow_error *err);
+			struct doca_flow_fwd *fwd, struct doca_flow_error *err);
 
 struct doca_flow_pipe_entry *doca_dpdk_pipe_create_flow(
 	struct doca_flow_pipe *pipe, uint16_t pipe_queue,
-    struct doca_flow_match *match, struct doca_flow_actions *actions,
+	struct doca_flow_match *match, struct doca_flow_actions *actions,
 	struct doca_flow_monitor *mon, struct doca_flow_fwd *cfg,
 	struct doca_flow_error *err);
 

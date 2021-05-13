@@ -18,6 +18,10 @@
 #define DOCA_ETHER_ADDR_LEN (6)
 #define DOCA_VXLAN_DEFAULT_PORT (4789)
 
+typedef uint16_t doca_be16_t; /**< 16-bit big-endian value. */
+typedef uint32_t doca_be32_t; /**< 32-bit big-endian value. */
+typedef uint64_t doca_be64_t; /**< 64-bit big-endian value. */
+
 enum doca_flow_l3_type {
 	DOCA_NONE = 0,
 	DOCA_IPV4 = 4,
@@ -50,7 +54,7 @@ struct doca_flow_tun {
 		} vxlan;
 
 		struct gre {
-			uint32_t key;
+			doca_be32_t key;
 		} gre;
 	};
 };
@@ -58,8 +62,8 @@ struct doca_flow_tun {
 struct doca_ip_addr {
 	uint8_t type;
 	union {
-		uint32_t ipv4_addr;
-		uint32_t ipv6_addr[4];
+		doca_be32_t ipv4_addr;
+		doca_be32_t ipv6_addr[4];
 	} a;
 };
 

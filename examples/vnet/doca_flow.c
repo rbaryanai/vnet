@@ -15,7 +15,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include "doca_flow.h"
-#include "gw.h"
 #include "doca_log.h"
 #include "doca_dpdk.h"
 #include "doca_dpdk_priv.h"
@@ -54,8 +53,8 @@ struct doca_flow_pipe_entry *doca_flow_pipe_add_entry(
 	if (pipe == NULL || match == NULL || actions == NULL)
 		return NULL;
 	pipe_queue = pipe_queue;
-	return doca_dpdk_pipe_create_flow(pipe, pipe_queue, match, actions, mon,
-	                                  fwd, err);
+	return doca_dpdk_pipe_create_flow(pipe, pipe_queue, match,
+		actions, mon, fwd, err);
 }
 
 int doca_flow_rm_entry(uint16_t pipe_queue,
@@ -118,8 +117,8 @@ int doca_flow_port_stop(struct doca_flow_port *port)
 
 struct doca_flow_pipe *
 doca_flow_create_pipe(struct doca_flow_pipe_cfg *cfg,
-                      struct doca_flow_fwd *fwd,
-		      struct doca_flow_error *err)
+			struct doca_flow_fwd *fwd,
+			struct doca_flow_error *err)
 {
 	if (cfg == NULL)
 		return NULL;

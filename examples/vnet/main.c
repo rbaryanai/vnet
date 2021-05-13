@@ -62,10 +62,11 @@ DOCA_LOG_MODULE(main);
 static volatile bool force_quit;
 
 uint16_t nr_queues = 4;
-uint16_t rx_only = 0;
+uint16_t rx_only;
 uint16_t hw_offload = 1;
 uint64_t stats_timer = 1;
-uint16_t nr_hairpinq = 0;
+uint16_t nr_hairpinq;
+static bool capture_en;
 
 static const char *pcap_file_name =
 	"/var/opt/rbaryanai/vnet/build/examples/vnet/test.pcap";
@@ -179,7 +180,7 @@ static int count_lcores(void)
 
 static void gw_info_usage(const char *prgname)
 {
-	printf("%s [EAL options] -- \n"
+	printf("%s [EAL options] --\n"
 	       "  --log_level: set log level\n"
 	       "  --stats_timer: set interval to dump stats information\n"
 	       "  --nr_queues: set queues number\n"
@@ -293,13 +294,11 @@ static int init_dpdk(int argc, char **argv)
 	force_quit = false;
 	stats_timer *= rte_get_timer_hz();
 	if (nr_queues > count_lcores())
-	    nr_queues = count_lcores();
+		nr_queues = count_lcores();
 	signal(SIGINT, signal_handler);
 	signal(SIGTERM, signal_handler);
 	return 0;
 }
-
-static bool capture_en = 0;
 
 int main(int argc, char **argv)
 {
