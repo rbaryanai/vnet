@@ -266,29 +266,32 @@ doca_dpdk_build_ipv6_flow_item(struct doca_dpdk_item_entry *entry,
 	struct rte_flow_item *item = entry->item;
 	struct doca_ip_addr mask_src_ip;
 	struct doca_ip_addr mask_dst_ip;
+	int i;
 
     if (match_mask) {
         mask_src_ip = DOCA_GET_SRC_IP(match_mask, type);
         mask_dst_ip = DOCA_GET_DST_IP(match_mask, type);
     } else {
-        memset(mask_src_ip.a.ipv6_addr, 1, sizeof *mask_src_ip.a.ipv6_addr);
-        memset(mask_dst_ip.a.ipv6_addr, 1, sizeof *mask_dst_ip.a.ipv6_addr);
+		for (i = 0; i < 4; i++) {
+			memset(&mask_src_ip.a.ipv6_addr[i], 1, sizeof *mask_src_ip.a.ipv6_addr);
+			memset(&mask_dst_ip.a.ipv6_addr[i], 1, sizeof *mask_dst_ip.a.ipv6_addr);
+		}
     }
 
 	item->type = RTE_FLOW_ITEM_TYPE_IPV6;
 	if (!doca_is_ip_zero(&src_ip)) {
 		memcpy(mask->hdr.src_addr, mask_src_ip.a.ipv6_addr,
-		       sizeof(mask_src_ip.a.ipv6_addr));
+		       sizeof(mask->hdr.src_addr));
 		memcpy(spec->hdr.src_addr, src_ip.a.ipv6_addr,
-		       sizeof(src_ip.a.ipv6_addr));
+		       sizeof(spec->hdr.src_addr));
 		if (doca_is_ip_max(&src_ip))
 			entry->flags |= DOCA_MODIFY_SIP;
 	}
 	if (!doca_is_ip_zero(&dst_ip)) {
 		memcpy(mask->hdr.dst_addr, mask_dst_ip.a.ipv6_addr,
-		       sizeof(mask_dst_ip.a.ipv6_addr));
+		       sizeof(mask->hdr.dst_addr));
 		memcpy(spec->hdr.dst_addr, dst_ip.a.ipv6_addr,
-		       sizeof(dst_ip.a.ipv6_addr));
+		       sizeof(spec->hdr.dst_addr));
 		if (doca_is_ip_max(&dst_ip))
 			entry->flags |= DOCA_MODIFY_DIP;
 	}
