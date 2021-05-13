@@ -16,6 +16,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include "doca_net.h"
 
 #define GW_IPV4 (4)
 #define GW_IPV6 (6)
@@ -75,15 +76,15 @@ struct doca_pkt_info {
 
 int doca_parse_packet(uint8_t *data, int len, struct doca_pkt_info *pinfo);
 
-uint32_t doca_pinfo_outer_ipv4_dst(struct doca_pkt_info *pinfo);
-uint32_t doca_pinfo_outer_ipv4_src(struct doca_pkt_info *pinfo);
-uint32_t doca_pinfo_inner_ipv4_src(struct doca_pkt_info *pinfo);
-uint32_t doca_pinfo_inner_ipv4_dst(struct doca_pkt_info *pinfo);
+doca_be32_t doca_pinfo_outer_ipv4_dst(struct doca_pkt_info *pinfo);
+doca_be32_t doca_pinfo_outer_ipv4_src(struct doca_pkt_info *pinfo);
+doca_be32_t doca_pinfo_inner_ipv4_src(struct doca_pkt_info *pinfo);
+doca_be32_t doca_pinfo_inner_ipv4_dst(struct doca_pkt_info *pinfo);
 
-uint16_t doca_pinfo_inner_src_port(struct doca_pkt_info *pinfo);
-uint16_t doca_pinfo_inner_dst_port(struct doca_pkt_info *pinfo);
-uint16_t doca_pinfo_outer_src_port(struct doca_pkt_info *pinfo);
-uint16_t doca_pinfo_outer_dst_port(struct doca_pkt_info *pinfo);
+doca_be16_t doca_pinfo_inner_src_port(struct doca_pkt_info *pinfo);
+doca_be16_t doca_pinfo_inner_dst_port(struct doca_pkt_info *pinfo);
+doca_be16_t doca_pinfo_outer_src_port(struct doca_pkt_info *pinfo);
+doca_be16_t doca_pinfo_outer_dst_port(struct doca_pkt_info *pinfo);
 
 void doca_pinfo_decap(struct doca_pkt_info *pinfo);
 

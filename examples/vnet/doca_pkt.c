@@ -28,27 +28,27 @@ DOCA_LOG_MODULE(doca_pkt);
 #define DOCA_GTP_ESPN_FLAGS_ON(p) (p & 0x7)
 #define DOCA_GTP_EXT_FLAGS_ON(p) (p & 0x4)
 
-uint32_t doca_pinfo_outer_ipv4_dst(struct doca_pkt_info *pinfo)
+doca_be32_t doca_pinfo_outer_ipv4_dst(struct doca_pkt_info *pinfo)
 {
 	return ((struct rte_ipv4_hdr *)pinfo->outer.l3)->dst_addr;
 }
 
-uint32_t doca_pinfo_outer_ipv4_src(struct doca_pkt_info *pinfo)
+doca_be32_t doca_pinfo_outer_ipv4_src(struct doca_pkt_info *pinfo)
 {
 	return ((struct rte_ipv4_hdr *)pinfo->outer.l3)->src_addr;
 }
 
-uint32_t doca_pinfo_inner_ipv4_dst(struct doca_pkt_info *pinfo)
+doca_be32_t doca_pinfo_inner_ipv4_dst(struct doca_pkt_info *pinfo)
 {
 	return ((struct rte_ipv4_hdr *)pinfo->inner.l3)->dst_addr;
 }
 
-uint32_t doca_pinfo_inner_ipv4_src(struct doca_pkt_info *pinfo)
+doca_be32_t doca_pinfo_inner_ipv4_src(struct doca_pkt_info *pinfo)
 {
 	return ((struct rte_ipv4_hdr *)pinfo->inner.l3)->src_addr;
 }
 
-static uint16_t doca_pinfo_src_port(struct doca_pkt_format *fmt)
+static doca_be16_t doca_pinfo_src_port(struct doca_pkt_format *fmt)
 {
 	switch (fmt->l4_type) {
 	case IPPROTO_TCP:
@@ -60,7 +60,7 @@ static uint16_t doca_pinfo_src_port(struct doca_pkt_format *fmt)
 	}
 }
 
-static uint16_t doca_pinfo_dst_port(struct doca_pkt_format *fmt)
+static doca_be16_t doca_pinfo_dst_port(struct doca_pkt_format *fmt)
 {
 	switch (fmt->l4_type) {
 	case IPPROTO_TCP:
@@ -72,22 +72,22 @@ static uint16_t doca_pinfo_dst_port(struct doca_pkt_format *fmt)
 	}
 }
 
-uint16_t doca_pinfo_inner_src_port(struct doca_pkt_info *pinfo)
+doca_be16_t doca_pinfo_inner_src_port(struct doca_pkt_info *pinfo)
 {
 	return doca_pinfo_src_port(&pinfo->inner);
 }
 
-uint16_t doca_pinfo_inner_dst_port(struct doca_pkt_info *pinfo)
+doca_be16_t doca_pinfo_inner_dst_port(struct doca_pkt_info *pinfo)
 {
 	return doca_pinfo_dst_port(&pinfo->inner);
 }
 
-uint16_t doca_pinfo_outer_src_port(struct doca_pkt_info *pinfo)
+doca_be16_t doca_pinfo_outer_src_port(struct doca_pkt_info *pinfo)
 {
 	return doca_pinfo_src_port(&pinfo->outer);
 }
 
-uint16_t doca_pinfo_outer_dst_port(struct doca_pkt_info *pinfo)
+doca_be16_t doca_pinfo_outer_dst_port(struct doca_pkt_info *pinfo)
 {
 	return doca_pinfo_dst_port(&pinfo->outer);
 }
