@@ -1294,7 +1294,8 @@ static struct rte_flow *doca_dpdk_create_def_rss(uint16_t port_id)
 	return doca_dpdk_create_flow(port_id, &attr, items, actions);
 }
 
-static struct rte_flow *doca_dpdk_pipe_create_entry_flow(
+static struct rte_flow *
+doca_dpdk_pipe_create_entry_flow(__rte_unused uint16_t pipe_queue,
 	struct doca_dpdk_pipe *pipe, struct doca_flow_pipe_entry *entry,
 	struct doca_flow_match *match, struct doca_flow_actions *actions,
 	struct doca_flow_monitor *mon, struct doca_flow_fwd *cfg,
@@ -1357,7 +1358,7 @@ doca_dpdk_pipe_create_flow(struct doca_flow_pipe *pipe,
 	    sizeof(struct doca_flow_pipe_entry));
 	if (entry == NULL)
 		return NULL;
-	entry->pipe_entry = doca_dpdk_pipe_create_entry_flow(
+	entry->pipe_entry = doca_dpdk_pipe_create_entry_flow(pipe_queue,
 	    &pipe->flow, entry, match, actions, mon, cfg, err);
 	if (entry->pipe_entry == NULL) {
 		DOCA_LOG_INFO("create pip entry fail,idex:%d",
