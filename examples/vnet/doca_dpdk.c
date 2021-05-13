@@ -226,7 +226,7 @@ doca_dpdk_build_ipv4_flow_item(struct doca_dpdk_item_entry *entry,
 	}
 	if (!doca_is_ip_zero(&dst_ip)) {
 		spec->hdr.dst_addr = dst_ip.a.ipv4_addr;
-		spec->hdr.dst_addr = mask_dst_ip.a.ipv4_addr;
+		mask->hdr.dst_addr = mask_dst_ip.a.ipv4_addr;
 		if (doca_is_ip_max(&dst_ip))
 			entry->flags |= DOCA_MODIFY_DIP;
 	}
