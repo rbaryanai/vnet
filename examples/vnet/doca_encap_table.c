@@ -10,7 +10,6 @@
  * provided with the software product.
  *
  */
-
 #include "rte_hash.h"
 #include "rte_hash_crc.h"
 #include "doca_encap_table.h"
@@ -28,7 +27,7 @@ struct encap_table_key {
 };
 
 struct encap_table_entry {
-    uint8_t *data;
+    void *data;
     bool     used;
     uint32_t refcnt;
     struct encap_table_key key;
@@ -72,6 +71,11 @@ struct rte_hash_parameters encap_table_hash_params = {
         .hash_func_init_val = 0,
 };
 
+int doca_encap_table_get_refcnt(int id)
+{
+    return encap_table_ins->entries[id].refcnt;
+}
+
 int doca_encap_table_init(int max_encaps)
 {
     int total_size = sizeof(struct encap_table) +
@@ -104,23 +108,24 @@ int doca_encap_table_add_id(struct doca_flow_encap_action *ea)
 {
     struct encap_table_key key = {0};
     int id = 0;
-    if ((id = doca_encap_table_get_id(ea)) >= 0)
+
+    rte_spinlock_lock(&encap_table_ins->lock);
+    if ((id = doca_encap_table_get_id(ea)) >= 0) {
+        encap_table_ins->entries[id].refcnt++;
+        rte_spinlock_unlock(&encap_table_ins->lock);
         return id;
+    }
 
     if (encap_table_ins->size >= encap_table_ins->max) {
         DOCA_LOG_WARN("max size reached");
-        return -1;
-    }
-
-    if (key.src_ip.type != 4) {
-        DOCA_LOG_WARN("support only ipv4");
+        rte_spinlock_unlock(&encap_table_ins->lock);
         return -1;
     }
 
     key.src_ip = ea->src_ip;
     key.dst_ip = ea->dst_ip;
     key.tun = ea->tun;
-    rte_spinlock_lock(&encap_table_ins->lock);
+
     id = rte_hash_add_key(encap_table_ins->h, (void *) &key);
     encap_table_ins->entries[id].used = true;
     encap_table_ins->entries[id].data = NULL;
@@ -139,13 +144,11 @@ int doca_encap_table_get_id(struct doca_flow_encap_action *ea)
     key.dst_ip = ea->dst_ip;
     key.tun = ea->tun;
 
-    rte_spinlock_lock(&encap_table_ins->lock);
     id = rte_hash_lookup(encap_table_ins->h, (void *) &key);
-    rte_spinlock_unlock(&encap_table_ins->lock);
     return id;
 }
 
-int doca_encap_table_udpate_data(int id, uint8_t *data)
+int doca_encap_table_udpate_data(int id, void *data)
 {
     if (id < 0 || id > encap_table_ins->max)
         return -1;

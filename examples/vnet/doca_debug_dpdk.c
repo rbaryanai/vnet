@@ -204,6 +204,22 @@ static void doca_dump_raw_decap(const struct rte_flow_action_raw_decap *decap)
     doca_log_prefix_buff("\n");
 }
 
+static void doca_dump_meta_item(const struct rte_flow_item *item)
+{
+    const struct rte_flow_item_meta *meta =
+	    (const struct rte_flow_item_meta *)item->spec;
+
+    doca_log_buff("meta data is %u / ", meta->data);
+}
+
+static void doca_dump_mark_item(const struct rte_flow_item *item)
+{
+    const struct rte_flow_item_mark *mark =
+	    (const struct rte_flow_item_mark *)item->spec;
+
+    doca_log_buff("mark id is %u / ", mark->id);
+}
+
 void doca_dump_rte_flow(const char *name, uint16_t port_id,
 			const struct rte_flow_attr *attr,
 			const struct rte_flow_item items[],
@@ -246,6 +262,12 @@ void doca_dump_rte_flow(const char *name, uint16_t port_id,
 		case RTE_FLOW_ITEM_TYPE_GRE_KEY:
 			doca_dump_gre_item_key(items);
 			break;
+		case RTE_FLOW_ITEM_TYPE_META:
+			doca_dump_meta_item(items);
+			break;
+		case RTE_FLOW_ITEM_TYPE_MARK:
+			doca_dump_mark_item(items);
+			break;
 		default:
 			doca_log_buff("not support item:%u\n", item_type);
 		}
@@ -266,6 +288,7 @@ void doca_dump_rte_flow(const char *name, uint16_t port_id,
 		const struct rte_flow_action_meter *meter;
 		const struct rte_flow_action_raw_encap *encap;
 		const struct rte_flow_action_raw_decap *decap;
+		const struct rte_flow_action_set_meta *meta;
 
 		switch (action_type) {
 		case RTE_FLOW_ACTION_TYPE_MARK:
@@ -362,8 +385,13 @@ void doca_dump_rte_flow(const char *name, uint16_t port_id,
 		case RTE_FLOW_ACTION_TYPE_COUNT:
 			doca_log_buff("count / ");
 			break;
+		case RTE_FLOW_ACTION_TYPE_SET_META:
+			meta =
+				(const struct rte_flow_action_set_meta *)actions->conf;
+			doca_log_buff("set_meta data is %u / ", meta->data);
+			break;
 		default:
-			doca_log_buff("not support action:%u /", action_type);
+			doca_log_buff("not support action:%u / ", action_type);
 		}
 	}
 	doca_log_buff("end ");

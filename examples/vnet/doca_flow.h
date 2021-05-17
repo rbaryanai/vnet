@@ -205,6 +205,7 @@ struct doca_flow_fwd {
                 uint32_t rss_flags;
                 uint16_t *queues;
                 int num_queues;
+                uint32_t mark;
         } rss;
 
         struct port {

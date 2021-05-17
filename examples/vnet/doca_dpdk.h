@@ -143,17 +143,29 @@ struct doca_dpdk_action_rss_data {
 	uint16_t queue[128];
 };
 
+struct doca_dpdk_action_mark_data {
+	struct rte_flow_action_mark conf;
+	uint32_t id;
+};
+
 struct doca_dpdk_action_rawdecap_data {
 	struct rte_flow_action_raw_decap conf;
 	uint8_t data[128];
 	uint16_t idx;
 };
 
+struct doca_dpdk_action_set_meta {
+    struct rte_flow_action_set_meta conf;
+    uint32_t data;
+};
+
 struct doca_dpdk_action_rawencap_data {
 	struct rte_flow_action_raw_encap conf;
+	struct doca_dpdk_action_set_meta meta;
 	uint8_t data[128];
 	uint8_t preserve[128];
 	uint16_t idx;
+	uint8_t layer;
 };
 
 struct doca_dpdk_action_meter_data {
@@ -181,15 +193,18 @@ struct doca_dpdk_action_data {
 		struct doca_dpdk_action_rawdecap_data rawdecap;
 		struct doca_dpdk_action_rawencap_data rawencap;
 		struct doca_dpdk_action_meter_data meter;
-        struct doca_dpdk_action_fwd_data fwd;
+        struct doca_dpdk_action_set_meta meta;
+		struct doca_dpdk_action_fwd_data fwd;
+		struct doca_dpdk_action_mark_data mark;
 	};
 };
 
 struct doca_dpdk_action_entry {
 	struct rte_flow_action *action;
 	struct doca_dpdk_action_data action_data;
-	int (*modify_action)(struct doca_dpdk_action_entry *entry,
-		struct doca_flow_actions *action);
+	int (*modify_action)(struct doca_dpdk_pipe *pipe,
+            struct doca_dpdk_action_entry *entry,
+            struct doca_flow_actions *action);
 };
 
 struct doca_dpdk_pipe {
@@ -213,7 +228,7 @@ struct doca_dpdk_pipe_list {
 
 struct endecap_layer {
 	uint16_t layer;
-	void (*fill_data)(uint8_t **, struct doca_flow_pipe_cfg *, uint8_t);
+	void (*fill_data)(uint8_t **, struct doca_flow_encap_action *, uint8_t, uint16_t);
 };
 
 enum DOCA_DECAP_HDR {
@@ -222,6 +237,7 @@ enum DOCA_DECAP_HDR {
 	FILL_UDP_HDR = (1 << 2),
 	FILL_VXLAN_HDR = (1 << 3),
 	FILL_GRE_HDR = (1 << 4),
+	FILL_IPV6_HDR = (1 << 5),
 };
 
 /*need move to util file ??*/
@@ -328,14 +344,14 @@ doca_dpdk_create_pipe(struct doca_flow_pipe_cfg *cfg,
                       struct doca_flow_fwd *fwd,
 		      struct doca_flow_error *err);
 
-struct doca_flow_pipe_entry *doca_dpdk_pipe_create_flow(
+struct doca_flow_pipe_entry *doca_dpdk_add_pipe_entry(
 	struct doca_flow_pipe *pipe, uint16_t pipe_queue,
     struct doca_flow_match *match, struct doca_flow_actions *actions,
 	struct doca_flow_monitor *mon, struct doca_flow_fwd *cfg,
 	struct doca_flow_error *err);
 
 int doca_dpdk_init_port(uint16_t port_id);
-int doca_dpdk_pipe_free_entry(uint16_t portid,
+int doca_dpdk_free_pipe_entry(uint16_t portid,
 			      struct doca_flow_pipe_entry *entry);
 
 struct doca_flow_port *doca_dpdk_port_start(struct doca_flow_port_cfg *cfg,

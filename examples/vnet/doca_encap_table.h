@@ -26,6 +26,8 @@
  */
 int doca_encap_table_init(int max_encaps);
 
+int doca_encap_table_get_refcnt(int id);
+
 /**
  * @brief - add encap action
  *      encap is identidied by its 3-tuple
@@ -50,7 +52,7 @@ int doca_encap_table_add_id(struct doca_flow_encap_action *ea);
  * @return 0 on success and if id exits. note that data will
  *  be overidden.
  */
-int doca_encap_table_udpate_data(int id, uint8_t *data);
+int doca_encap_table_udpate_data(int id, void *data);
 
 /**
  * @brief find specific encap.

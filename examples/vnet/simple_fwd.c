@@ -48,6 +48,8 @@ struct simple_fwd_app {
 
 static struct simple_fwd_app *sf_ins;
 struct doca_flow_fwd *fwd_tbl_port[2];
+struct doca_flow_fwd *sw_rss_fwd_tbl_port[2];
+
 bool hairpin = true;
 
 struct sf_entry {
@@ -103,6 +105,24 @@ sf_build_port_fwd(struct sf_port_cfg *port_cfg)
     fwd->port.id = port_cfg->port_id;
     return fwd;
 }
+static struct doca_flow_fwd *sf_build_rss_fwd(int n_queues)
+{
+	int i;
+        struct doca_flow_fwd *fwd = malloc(sizeof(struct doca_flow_fwd));
+	uint16_t *queues;
+        memset(fwd,0,sizeof(struct doca_flow_fwd));
+
+	queues = malloc(sizeof(uint16_t) * n_queues);
+	for (i = 1; i < n_queues; i++)
+		queues[i - 1] = i;
+	fwd->type = DOCA_FWD_RSS;
+	fwd->rss.queues = queues;
+	fwd->rss.rss_flags = DOCA_RSS_IP | DOCA_RSS_UDP | DOCA_RSS_IP;
+	fwd->rss.num_queues = n_queues - 1;
+	fwd->rss.mark = 5;
+	return fwd;
+}
+
 
 struct doca_flow_port *
 sf_init_doca_port(struct sf_port_cfg *port_cfg)
@@ -130,6 +150,9 @@ sf_init_doca_port(struct sf_port_cfg *port_cfg)
 	}
 
 	*((struct sf_port_cfg *)doca_flow_port_priv_data(port)) = *port_cfg;
+	sw_rss_fwd_tbl_port[port_cfg->port_id] =
+	    sf_build_rss_fwd(port_cfg->nb_queues);
+
     fwd_tbl_port[port_cfg->port_id] = sf_build_port_fwd(port_cfg);
 	return port;
 }
@@ -215,6 +238,7 @@ build_fwd_pipe(struct doca_flow_port *port,uint16_t fwd_port_id)
 //    struct doca_flow_fwd fwd;
         
 	memset(&match, 0x0, sizeof(match));
+	memset(&pipe_cfg, 0, sizeof pipe_cfg);
     //build_match_5tuple(&match);
 	build_match_tun_and_5tuple(&match);
     build_decap_action(&actions);
@@ -229,8 +253,8 @@ build_fwd_pipe(struct doca_flow_port *port,uint16_t fwd_port_id)
     fwd.type = DOCA_FWD_PORT;
     fwd.port.id = fwd_port_id; 
     fwd.port.hairpin = hairpin;*/
-
-	return doca_flow_create_pipe(&pipe_cfg, fwd_tbl_port[fwd_port_id], &err);
+	return doca_flow_create_pipe(&pipe_cfg, sw_rss_fwd_tbl_port[fwd_port_id], &err);
+	//return doca_flow_create_pipe(&pipe_cfg, fwd_tbl_port[fwd_port_id], &err);
 }
 
 static int
@@ -310,6 +334,7 @@ sf_pipe_add_entry(struct doca_pkt_info *pinfo,
 	match.in_dst_port = doca_pinfo_inner_dst_port(pinfo);
 
 	actions.has_encap = true;
+	actions.encap.src_ip.type = DOCA_IPV4;
 	actions.encap.src_ip.a.ipv4_addr = doca_pinfo_outer_ipv4_dst(pinfo);
 	actions.encap.dst_ip.a.ipv4_addr = doca_pinfo_outer_ipv4_src(pinfo);
 
@@ -318,9 +343,10 @@ sf_pipe_add_entry(struct doca_pkt_info *pinfo,
 
 	actions.encap.tun.type = DOCA_TUN_VXLAN;
 	actions.encap.tun.vxlan.tun_id = 0x42;
-
 	return doca_flow_pipe_add_entry(0, pipe, &match, &actions, NULL,
-                            	    fwd_tbl_port[pinfo->orig_port_id], &err);
+	sw_rss_fwd_tbl_port[pinfo->orig_port_id], &err);
+	//return doca_flow_pipe_add_entry(0, pipe, &match, &actions, NULL,
+    //                        	    fwd_tbl_port[pinfo->orig_port_id], &err);
 }
 
 
