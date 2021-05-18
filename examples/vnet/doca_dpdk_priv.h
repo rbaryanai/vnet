@@ -55,4 +55,25 @@ struct doca_flow_port {
 	uint8_t user_data[0];
 };
 
+int
+doca_dpdk_build_item(struct doca_flow_match *match,
+                     struct doca_flow_match *mask,
+                     struct doca_dpdk_pipe *pipe_flow,
+                     struct doca_flow_error *err);
+
+void
+doca_dpdk_build_drop_action(struct doca_dpdk_pipe *pipe);
+
+int
+doca_dpdk_build_modify_actions(struct doca_flow_pipe_cfg *cfg,
+                               struct doca_dpdk_pipe *pipe_flow);
+
+struct rte_flow *
+doca_dpdk_create_rte_flow(uint16_t port_id, const struct rte_flow_attr *attr,
+                          const struct rte_flow_item pattern[],
+                          const struct rte_flow_action actions[]);
+
+void
+doca_dpdk_build_end_action(struct doca_dpdk_pipe *pipe);
+
 #endif

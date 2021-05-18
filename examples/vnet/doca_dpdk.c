@@ -515,7 +515,7 @@ doca_dpdk_build_udp_flow_item(struct doca_dpdk_item_entry *entry,
 	return;
 }
 
-static int
+int
 doca_dpdk_build_item(struct doca_flow_match *match,
                      struct doca_flow_match *mask,
                      struct doca_dpdk_pipe *pipe_flow,
@@ -728,7 +728,7 @@ doca_dpdk_build_raw_data(uint8_t **header,
 	}
 }
 
-static struct rte_flow *
+struct rte_flow *
 doca_dpdk_create_rte_flow(uint16_t port_id, const struct rte_flow_attr *attr,
                           const struct rte_flow_item pattern[],
                           const struct rte_flow_action actions[])
@@ -1000,7 +1000,7 @@ doca_dpdk_build_dec_ttl_action(struct doca_dpdk_action_entry *entry)
 	action->conf = NULL;
 }
 
-static int
+int
 doca_dpdk_build_modify_actions(struct doca_flow_pipe_cfg *cfg,
                                struct doca_dpdk_pipe *pipe_flow)
 {
@@ -1037,7 +1037,7 @@ doca_dpdk_build_modify_actions(struct doca_flow_pipe_cfg *cfg,
 	return ret;
 }
 
-static void
+void
 doca_dpdk_build_end_action(struct doca_dpdk_pipe *pipe)
 {
 	struct rte_flow_action *action =
@@ -1046,7 +1046,7 @@ doca_dpdk_build_end_action(struct doca_dpdk_pipe *pipe)
 	action->type = RTE_FLOW_ACTION_TYPE_END;
 }
 
-static void
+void
 doca_dpdk_build_drop_action(struct doca_dpdk_pipe *pipe)
 {
 	struct rte_flow_action *action =
