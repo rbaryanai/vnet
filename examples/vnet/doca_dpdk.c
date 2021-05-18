@@ -31,7 +31,7 @@
 DOCA_LOG_MODULE(doca_dpdk);
 
 struct doca_dpdk_engine {
-        bool has_acl;
+	bool has_acl;
 	struct doca_id_pool *meter_pool;
 	struct doca_id_pool *meter_profile_pool;
 };
