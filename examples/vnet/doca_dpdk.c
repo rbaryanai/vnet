@@ -1574,7 +1574,7 @@ __doca_dpdk_create_pipe(struct doca_dpdk_pipe *flow,
 	}
 
 	doca_dump_rte_flow("create pipe:", flow->port_id, &flow->attr,
-			   flow->items, flow->actions);
+	                   flow->items, flow->actions);
 	return 0;
 }
 

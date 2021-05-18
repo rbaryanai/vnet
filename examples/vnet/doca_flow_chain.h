@@ -16,6 +16,9 @@
 
 #include "doca_flow.h"
 
+struct doca_flow_port;
+struct doca_flow_pipe;
+
 enum DOCA_FLOW_CHAIN_FLAGS {
     DOCA_FLOW_CHAIN_ISOLATE_MODE = 1 << 0,
     DOCA_FLOW_CHAIN_ACL          = 1 << 1,
