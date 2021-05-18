@@ -19,6 +19,7 @@
 #include "doca_log.h"
 #include "doca_dpdk.h"
 #include "doca_dpdk_priv.h"
+#include "doca_dpdk_offload.h"
 
 
 DOCA_LOG_MODULE(doca_flow);
@@ -35,6 +36,8 @@ int doca_flow_init(struct doca_flow_cfg *cfg, struct doca_flow_error *err)
 	if (err)
 		*err = *err;
 	doca_dpdk_init(cfg);
+        doca_dpdk_off_init(cfg);
+
 	return 0;
 }
 

@@ -213,6 +213,7 @@ struct doca_dpdk_pipe {
 	uint8_t nb_actions_pipe;
 	uint8_t nb_actions_entry;
 	uint32_t meter_info; /*profile id = policy id*/
+        struct rte_flow_template *ftemp;
 	struct rte_flow_attr attr;
 	struct rte_flow_item items[MAX_ITEMS];
 	struct doca_dpdk_item_entry item_entry[MAX_ITEMS];

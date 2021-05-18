@@ -1083,8 +1083,10 @@ doca_dpdk_build_rss_action(struct doca_dpdk_action_entry *entry,
 	rss_action = entry->action;
 	rss = &entry->action_data.rss;
 	rss->conf.queue_num = fwd_cfg->rss.num_queues;
-	for (qidx = 0; qidx < fwd_cfg->rss.num_queues; qidx++)
+	for (qidx = 0; qidx < fwd_cfg->rss.num_queues; qidx++) {
 		rss->queue[qidx] = fwd_cfg->rss.queues[qidx];
+                printf("val =%d, %d\n",rss->queue[qidx], fwd_cfg->rss.queues[qidx]);
+        }
 	rss->conf.func = RTE_ETH_HASH_FUNCTION_DEFAULT;
 	rss->conf.types = doca_dpdk_get_rss_type(fwd_cfg->rss.rss_flags);
 	rss->conf.queue = rss->queue;
@@ -1449,8 +1451,10 @@ doca_dpdk_add_new_pipe_entry(__rte_unused uint16_t pipe_queue,
 	}
 	doca_dpdk_build_end_action(pipe);
 out:
-	return doca_dpdk_create_rte_flow(pipe->port_id, &pipe->attr, pipe->items,
-				     pipe->actions);
+//	return doca_dpdk_create_rte_flow(pipe->port_id, &pipe->attr, pipe->items,
+//				     pipe->actions);
+        return doca_dpdk_off_pipe_add_entry(pipe, pipe_queue, err);
+
 }
 
 struct doca_flow_pipe_entry *
@@ -1605,6 +1609,11 @@ doca_dpdk_create_pipe(struct doca_flow_pipe_cfg *cfg,
 	}
         if (fwd != NULL)
             pl->fwd = *fwd;
+ 
+        /* in case of HW steering create template */       
+        doca_dpdk_pipe_create(pl, err);
+
+
 	rte_spinlock_lock(&cfg->port->pipe_lock);
 	LIST_INSERT_HEAD(&cfg->port->pipe_list, pl, next);
 	rte_spinlock_unlock(&cfg->port->pipe_lock);

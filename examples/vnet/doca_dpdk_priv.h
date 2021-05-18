@@ -23,7 +23,7 @@
 	uint32_t id;
 	struct doca_flow_fwd cfg;
 };*/
-
+struct rte_flow_template;
 
 struct doca_flow_pipe_entry {
 	LIST_ENTRY(doca_flow_pipe_entry) next;

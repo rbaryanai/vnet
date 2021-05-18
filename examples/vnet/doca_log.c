@@ -16,7 +16,7 @@
 #include "string.h"
 #include "doca_log.h"
 
-static enum doca_log_level doca_log_default_level = DOCA_LOG_LEVEL_INFO;
+static enum doca_log_level doca_log_default_level = DOCA_LOG_LEVEL_DEBUG;
 static int doca_log_moudle_id;
 
 /*need add a lock here*/

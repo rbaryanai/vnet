@@ -111,14 +111,14 @@ static struct doca_flow_fwd *sf_build_rss_fwd(int n_queues)
         struct doca_flow_fwd *fwd = malloc(sizeof(struct doca_flow_fwd));
 	uint16_t *queues;
         memset(fwd,0,sizeof(struct doca_flow_fwd));
-
+            printf("number of queues =%d\n",n_queues);
 	queues = malloc(sizeof(uint16_t) * n_queues);
-	for (i = 1; i < n_queues; i++)
-		queues[i - 1] = i;
+	for (i = 0; i < n_queues; i++)
+		queues[i] = i;
 	fwd->type = DOCA_FWD_RSS;
 	fwd->rss.queues = queues;
 	fwd->rss.rss_flags = DOCA_RSS_IP | DOCA_RSS_UDP | DOCA_RSS_IP;
-	fwd->rss.num_queues = n_queues - 1;
+	fwd->rss.num_queues = n_queues ;
 	fwd->rss.mark = 5;
 	return fwd;
 }
@@ -231,18 +231,21 @@ static void build_encap_action(struct doca_flow_actions *actions)
 static struct doca_flow_pipe *
 build_fwd_pipe(struct doca_flow_port *port,uint16_t fwd_port_id)
 {
-	struct doca_flow_pipe_cfg pipe_cfg;
+	struct doca_flow_pipe_cfg pipe_cfg = {0};
 	struct doca_flow_error err = {0};
-	struct doca_flow_match match;
+	struct doca_flow_match match = {0};
 	struct doca_flow_actions actions = {0};
 //    struct doca_flow_fwd fwd;
         
 	memset(&match, 0x0, sizeof(match));
 	memset(&pipe_cfg, 0, sizeof pipe_cfg);
     //build_match_5tuple(&match);
-	build_match_tun_and_5tuple(&match);
-    build_decap_action(&actions);
-    build_encap_action(&actions);
+    //build_decap_action(&actions);
+    //build_encap_action(&actions);
+    build_match_5tuple(&match);
+//	build_match_tun_and_5tuple(&match);
+//    build_decap_action(&actions);
+ //   build_encap_action(&actions);
 
 	pipe_cfg.name = "FWD";
 	pipe_cfg.port = port;
@@ -324,7 +327,7 @@ sf_pipe_add_entry(struct doca_pkt_info *pinfo,
 	match.out_l4_type = pinfo->outer.l4_type;
 	match.out_src_port = doca_pinfo_outer_src_port(pinfo);
 	match.out_dst_port = doca_pinfo_outer_dst_port(pinfo);
-
+/*
 	match.tun.vxlan.tun_id = pinfo->tun.vni;
 
 	match.in_dst_ip.a.ipv4_addr = doca_pinfo_inner_ipv4_dst(pinfo);
@@ -343,10 +346,9 @@ sf_pipe_add_entry(struct doca_pkt_info *pinfo,
 
 	actions.encap.tun.type = DOCA_TUN_VXLAN;
 	actions.encap.tun.vxlan.tun_id = 0x42;
+*/
 	return doca_flow_pipe_add_entry(0, pipe, &match, &actions, NULL,
-	sw_rss_fwd_tbl_port[pinfo->orig_port_id], &err);
-	//return doca_flow_pipe_add_entry(0, pipe, &match, &actions, NULL,
-    //                        	    fwd_tbl_port[pinfo->orig_port_id], &err);
+                            	    /*fwd_tbl_port[pinfo->orig_port_id],*/NULL, &err);
 }
 
 
@@ -393,7 +395,7 @@ sf_handle_packet(struct doca_pkt_info *pinfo)
 	}
 	entry = (struct sf_entry *)&ctx->data[0];
 	entry->total_pkts++;
-
+        printf("total pkt =%d\n",entry->total_pkts);
 	return 0;
 }
 
