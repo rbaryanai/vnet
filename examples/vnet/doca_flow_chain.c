@@ -46,6 +46,24 @@ int doca_flow_chain_init(int flags)
     return 0;
 }
 
+static void
+build_jump_action(struct doca_flow_pipe_cfg *pipe_cfg,
+                  struct doca_dpdk_pipe *flow)
+{
+    struct doca_dpdk_action_entry *entry =
+        &flow->action_entry[flow->nb_actions_pipe++];
+    struct rte_flow_action *action = entry->action;
+    struct rte_flow_action_jump jump;
+
+    /* TBD: need a way to get the root table to jump to
+     * assuming it's 1 now
+     */
+    jump.group = 1;
+    action->type = RTE_FLOW_ACTION_TYPE_JUMP;
+    action->conf = &jump;
+    doca_dpdk_build_end_action(flow);
+}
+
 static struct rte_flow *
 build_flow_isolate(struct doca_flow_port *port,
                    struct doca_flow_match *m,
@@ -82,8 +100,10 @@ build_flow_isolate(struct doca_flow_port *port,
         flow.attr.priority = 0;
     } else {
         ret = doca_dpdk_build_modify_actions(&pipe_cfg, &flow);
-        if (ret)
+        if (ret) {
             return NULL;
+        }
+        build_jump_action(&pipe_cfg, &flow);
         flow.attr.priority = 1;
     }
 
@@ -107,6 +127,25 @@ doca_flow_isolate_drop(struct doca_flow_port *port,
             return -1;
         isolate_drop.p_drop[isolate_drop.idx++].rte_flow = ret;
         isolate_drop.p_drop[isolate_drop.idx].port_id = port->port_id;
+        return 0;
+    }
+    return -1;
+}
+
+int
+doca_flow_isolate_pass(struct doca_flow_port *port,
+                       struct doca_flow_match *m,
+                       struct doca_flow_match *mask,
+                       struct doca_flow_actions *action)
+{
+    struct rte_flow *ret;
+
+    if (isolate_mode && (isolate_pass.idx < MAX_ISOLATE_RULES - 1)) {
+        ret = build_flow_isolate(port, m, mask, action);
+        if (!ret)
+            return -1;
+        isolate_pass.p_pass[isolate_pass.idx++].rte_flow = ret;
+        isolate_pass.p_pass[isolate_pass.idx].port_id = port->port_id;
         return 0;
     }
     return -1;
