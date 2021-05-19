@@ -13,8 +13,12 @@
 
 #include "doca_flow_chain.h"
 #include "doca_dpdk_priv.h"
+#include "doca_log.h"
 
 #define MAX_ISOLATE_RULES 128
+
+DOCA_LOG_MODULE(doca_flow_chain);
+
 static bool isolate_mode = false;
 
 struct flow_isolate_rule {
@@ -93,6 +97,7 @@ build_flow_isolate(struct doca_flow_port *port,
     }
     ret = doca_dpdk_build_item(m, mask, &flow, &err);
     if (ret) {
+        DOCA_LOG_ERR("Failed to build isolate items.\n");
         return NULL;
     }
     if (!action){
@@ -101,6 +106,7 @@ build_flow_isolate(struct doca_flow_port *port,
     } else {
         ret = doca_dpdk_build_modify_actions(&pipe_cfg, &flow);
         if (ret) {
+            DOCA_LOG_ERR("Failed to build isolate actions.\n");
             return NULL;
         }
         build_jump_action(&pipe_cfg, &flow);
@@ -129,6 +135,7 @@ doca_flow_isolate_drop(struct doca_flow_port *port,
         isolate_drop.p_drop[isolate_drop.idx].port_id = port->port_id;
         return 0;
     }
+    DOCA_LOG_DBG("Doca flow chain isolate enabled %d, flow items %d.\n", isolate_mode, isolate_pass.idx);
     return -1;
 }
 
@@ -148,6 +155,7 @@ doca_flow_isolate_pass(struct doca_flow_port *port,
         isolate_pass.p_pass[isolate_pass.idx].port_id = port->port_id;
         return 0;
     }
+    DOCA_LOG_DBG("Doca flow chain isolate enabled %d, flow items %d.\n", isolate_mode, isolate_pass.idx);
     return -1;
 }
 
@@ -160,6 +168,7 @@ doca_flow_isolate_clean_all(void)
     for (i = isolate_drop.idx - 1; i >= 0; i--) {
         if (rte_flow_destroy(isolate_drop.p_drop[i].port_id,
                              isolate_drop.p_drop[i].rte_flow, &error)) {
+            DOCA_LOG_ERR("Failed to flush flow isolate rule %d.\n", i);
             return -1;
         }
     }
@@ -168,6 +177,7 @@ doca_flow_isolate_clean_all(void)
     for (i = isolate_pass.idx - 1; i >= 0; i--) {
         if (rte_flow_destroy(isolate_pass.p_pass[i].port_id,
                              isolate_pass.p_pass[i].rte_flow, &error)) {
+            DOCA_LOG_ERR("Failed to flush flow isolate rule %d.\n", i);
             return -1;
         }
     }
