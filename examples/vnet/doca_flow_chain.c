@@ -150,3 +150,29 @@ doca_flow_isolate_pass(struct doca_flow_port *port,
     }
     return -1;
 }
+
+int
+doca_flow_isolate_clean_all(void)
+{
+    struct rte_flow_error error;
+    int i;
+
+    for (i = isolate_drop.idx - 1; i >= 0; i--) {
+        if (rte_flow_destroy(isolate_drop.p_drop[i].port_id,
+                             isolate_drop.p_drop[i].rte_flow, &error)) {
+            return -1;
+        }
+    }
+    isolate_drop.idx = 0;
+
+    for (i = isolate_pass.idx - 1; i >= 0; i--) {
+        if (rte_flow_destroy(isolate_pass.p_pass[i].port_id,
+                             isolate_pass.p_pass[i].rte_flow, &error)) {
+            return -1;
+        }
+    }
+    isolate_pass.idx = 0;
+
+    DOCA_LOG_INFO("Succesfully removed all flow isolate rules");
+    return 0;
+}
