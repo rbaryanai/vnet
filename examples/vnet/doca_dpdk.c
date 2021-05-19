@@ -1554,7 +1554,7 @@ __doca_dpdk_create_pipe(struct doca_dpdk_pipe *flow,
 	flow->attr.group = 1; // group 0 jump group 1
 	ret = doca_dpdk_build_item(cfg->match, cfg->match_mask, flow, err);
 	if (ret) {
-		err->type = DOCA_ERROR_PIPE_BUILD_IMTE_ERROR;
+		err->type = DOCA_ERROR_PIPE_BUILD_ITEM_ERROR;
 		return -1;
 	}
 	ret = doca_dpdk_build_modify_actions(cfg, flow);
