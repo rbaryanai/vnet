@@ -515,7 +515,7 @@ gw_pipe_add_ol_to_ol_entry(struct doca_pkt_info *pinfo,
 
 static void gw_rm_pipe_entry(struct doca_flow_pipe_entry *entry)
 {
-	doca_flow_rm_entry(0, entry);
+	doca_flow_pipe_rm_entry(0, entry);
 }
 
 static int gw_create(void)

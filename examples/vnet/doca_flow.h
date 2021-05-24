@@ -69,7 +69,7 @@ enum doca_flow_error_type {
 	DOCA_ERROR_UNSUPPORTED,
 	DOCA_ERROR_TABLE_IS_FULL,
 	DOCA_ERROR_NOMORE_PIPE_RESOURCE,
-	DOCA_ERROR_PIPE_BUILD_IMTE_ERROR,
+	DOCA_ERROR_PIPE_BUILD_ITEM_ERROR,
 	DOCA_ERROR_PIPE_BUILD_ACTION_ERROR,
 	DOCA_ERROR_OOM,
 };
@@ -372,8 +372,8 @@ int doca_flow_pipe_update_default(uint16_t pipe_queue,
  *
  * @return
  */
-int doca_flow_rm_entry(uint16_t pipe_queue,
-		       struct doca_flow_pipe_entry *entry);
+int doca_flow_pipe_rm_entry(uint16_t pipe_queue,
+			    struct doca_flow_pipe_entry *entry);
 
 /**
  * @brief - extract information about specific entry
@@ -400,8 +400,9 @@ int doca_flow_query(struct doca_flow_pipe_entry *pe,
 bool doca_flow_query_aging(struct doca_flow_pipe_entry *arr, int arr_len,
 			   int *n);
 
+void doca_flow_destroy_pipe(uint16_t port_id, struct doca_flow_pipe *pipe);
+void doca_flow_flush_pipe(uint16_t port_id);
 void doca_flow_destroy(uint16_t port_id);
 void doca_flow_dump_pipe(uint16_t port_id);
 
-//struct doca_flow_fwd *doca_flow_fwd_cast(struct doca_flow_fwd_tbl *tbl);
 #endif

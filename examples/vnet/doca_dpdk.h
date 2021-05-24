@@ -193,7 +193,7 @@ struct doca_dpdk_action_data {
 		struct doca_dpdk_action_rawdecap_data rawdecap;
 		struct doca_dpdk_action_rawencap_data rawencap;
 		struct doca_dpdk_action_meter_data meter;
-        struct doca_dpdk_action_set_meta meta;
+		struct doca_dpdk_action_set_meta meta;
 		struct doca_dpdk_action_fwd_data fwd;
 		struct doca_dpdk_action_mark_data mark;
 	};
@@ -203,8 +203,8 @@ struct doca_dpdk_action_entry {
 	struct rte_flow_action *action;
 	struct doca_dpdk_action_data action_data;
 	int (*modify_action)(struct doca_dpdk_pipe *pipe,
-            struct doca_dpdk_action_entry *entry,
-            struct doca_flow_actions *action);
+	struct doca_dpdk_action_entry *entry,
+	struct doca_flow_actions *action);
 };
 
 struct doca_dpdk_pipe {
@@ -350,13 +350,16 @@ struct doca_flow_pipe_entry *doca_dpdk_add_pipe_entry(
 	struct doca_flow_monitor *mon, struct doca_flow_fwd *cfg,
 	struct doca_flow_error *err);
 
-int doca_dpdk_init_port(uint16_t port_id);
+int doca_dpdk_init_port(struct doca_flow_port *port);
 int doca_dpdk_free_pipe_entry(uint16_t portid,
 			      struct doca_flow_pipe_entry *entry);
 
 struct doca_flow_port *doca_dpdk_port_start(struct doca_flow_port_cfg *cfg,
 					    struct doca_flow_error *err);
+int doca_dpdk_port_stop(struct doca_flow_port *port);
 void doca_dpdk_destroy(uint16_t port_id);
+void doca_dpdk_free_pipe(uint16_t portid, struct doca_flow_pipe *pipe);
+void doca_dpdk_flush_pipe(uint16_t port_id);
 void doca_dpdk_dump_pipe(uint16_t port_id);
 
 void doca_dpdk_enable_acl(void);

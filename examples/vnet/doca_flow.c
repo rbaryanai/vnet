@@ -24,12 +24,14 @@
 DOCA_LOG_MODULE(doca_flow);
 
 
-uint8_t *doca_flow_port_priv_data(struct doca_flow_port *p)
+uint8_t *
+doca_flow_port_priv_data(struct doca_flow_port *p)
 {
 	return &p->user_data[0];
 }
 
-int doca_flow_init(struct doca_flow_cfg *cfg, struct doca_flow_error *err)
+int
+doca_flow_init(struct doca_flow_cfg *cfg, struct doca_flow_error *err)
 {
 	DOCA_LOG_INFO("total sessions = %d\n", cfg->total_sessions);
 	if (err)
@@ -45,7 +47,8 @@ int doca_flow_init(struct doca_flow_cfg *cfg, struct doca_flow_error *err)
  *
  * @return
  */
-struct doca_flow_pipe_entry *doca_flow_pipe_add_entry(
+struct doca_flow_pipe_entry *
+doca_flow_pipe_add_entry(
 	uint16_t pipe_queue, struct doca_flow_pipe *pipe,
 	struct doca_flow_match *match, struct doca_flow_actions *actions,
 	struct doca_flow_monitor *mon, struct doca_flow_fwd *fwd,
@@ -53,13 +56,13 @@ struct doca_flow_pipe_entry *doca_flow_pipe_add_entry(
 {
 	if (pipe == NULL || match == NULL || actions == NULL)
 		return NULL;
-	pipe_queue = pipe_queue;
 	return doca_dpdk_add_pipe_entry(pipe, pipe_queue, match, actions, mon,
 	                                  fwd, err);
 }
 
-int doca_flow_rm_entry(uint16_t pipe_queue,
-		       struct doca_flow_pipe_entry *entry)
+int
+doca_flow_pipe_rm_entry(uint16_t pipe_queue,
+			struct doca_flow_pipe_entry *entry)
 {
 	DOCA_LOG_INFO("(pipe %d) HW release id%d", pipe_queue, entry->id);
 	/* doca_dpdk_free_flow(0, entry->pipe_entry); */
@@ -75,7 +78,8 @@ int doca_flow_rm_entry(uint16_t pipe_queue,
  *
  * @return
  */
-struct doca_flow_port *doca_flow_port_start(struct doca_flow_port_cfg *cfg,
+struct doca_flow_port *
+doca_flow_port_start(struct doca_flow_port_cfg *cfg,
 					    struct doca_flow_error *err)
 {
 	struct doca_flow_port *port = NULL;
@@ -109,11 +113,12 @@ struct doca_flow_port *doca_flow_port_start(struct doca_flow_port_cfg *cfg,
  *
  * @return
  */
-int doca_flow_port_stop(struct doca_flow_port *port)
+int
+doca_flow_port_stop(struct doca_flow_port *port)
 {
 	if (port != NULL)
 		DOCA_LOG_INFO("port id = %d stopped\n", port->port_id);
-	return 0;
+	return doca_dpdk_port_stop(port);
 }
 
 struct doca_flow_pipe *
@@ -126,12 +131,26 @@ doca_flow_create_pipe(struct doca_flow_pipe_cfg *cfg,
 	return doca_dpdk_create_pipe(cfg, fwd, err);
 }
 
-void doca_flow_destroy(uint16_t port_id)
+void
+doca_flow_destroy_pipe(uint16_t port_id, struct doca_flow_pipe *pipe)
+{
+	doca_dpdk_free_pipe(port_id, pipe);
+}
+
+void
+doca_flow_flush_pipe(uint16_t port_id)
+{
+	doca_dpdk_flush_pipe(port_id);
+}
+
+void
+doca_flow_destroy(uint16_t port_id)
 {
 	doca_dpdk_destroy(port_id);
 }
 
-void doca_flow_dump_pipe(uint16_t port_id)
+void
+doca_flow_dump_pipe(uint16_t port_id)
 {
 	doca_dpdk_dump_pipe(port_id);
 }
