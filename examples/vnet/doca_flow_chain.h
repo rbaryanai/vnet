@@ -16,6 +16,9 @@
 
 #include "doca_flow.h"
 
+struct doca_flow_port;
+struct doca_flow_pipe;
+
 enum DOCA_FLOW_CHAIN_FLAGS {
     DOCA_FLOW_CHAIN_ISOLATE_MODE = 1 << 0,
     DOCA_FLOW_CHAIN_ACL          = 1 << 1,
@@ -49,8 +52,9 @@ int doca_flow_chain_init(int flags);
  *
  * @return 
  */
-struct flow_entry *doca_flow_isolate_drop(struct doca_flow_match *m,
-                                        struct doca_flow_match *mask);
+int doca_flow_isolate_drop(struct doca_flow_port *port,
+                           struct doca_flow_match *m,
+                           struct doca_flow_match *mask);
 
 
 /**
@@ -66,9 +70,10 @@ struct flow_entry *doca_flow_isolate_drop(struct doca_flow_match *m,
  *
  * @return 
  */
-struct flow_entry *doca_flow_isolate_pass(struct doca_flow_match *m,
-                                        struct doca_flow_match *mask,
-                                        struct doca_flow_actions *action);
+int doca_flow_isolate_pass(struct doca_flow_port *port,
+                           struct doca_flow_match *m,
+                           struct doca_flow_match *mask,
+                           struct doca_flow_actions *action);
 
 /**
  * @brief - remove all flows.

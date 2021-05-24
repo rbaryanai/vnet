@@ -199,6 +199,8 @@ struct doca_dpdk_action_data {
 	};
 };
 
+struct doca_dpdk_pipe;
+
 struct doca_dpdk_action_entry {
 	struct rte_flow_action *action;
 	struct doca_dpdk_action_data action_data;

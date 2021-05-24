@@ -31,7 +31,7 @@
 DOCA_LOG_MODULE(doca_dpdk);
 
 struct doca_dpdk_engine {
-        bool has_acl;
+	bool has_acl;
 	struct doca_id_pool *meter_pool;
 	struct doca_id_pool *meter_profile_pool;
 };
@@ -513,7 +513,7 @@ doca_dpdk_build_udp_flow_item(struct doca_dpdk_item_entry *entry,
 	return;
 }
 
-static int
+int
 doca_dpdk_build_item(struct doca_flow_match *match,
                      struct doca_flow_match *mask,
                      struct doca_dpdk_pipe *pipe_flow,
@@ -726,7 +726,7 @@ doca_dpdk_build_raw_data(uint8_t **header,
 	}
 }
 
-static struct rte_flow *
+struct rte_flow *
 doca_dpdk_create_rte_flow(uint16_t port_id, const struct rte_flow_attr *attr,
                           const struct rte_flow_item pattern[],
                           const struct rte_flow_action actions[])
@@ -998,7 +998,7 @@ doca_dpdk_build_dec_ttl_action(struct doca_dpdk_action_entry *entry)
 	action->conf = NULL;
 }
 
-static int
+int
 doca_dpdk_build_modify_actions(struct doca_flow_pipe_cfg *cfg,
                                struct doca_dpdk_pipe *pipe_flow)
 {
@@ -1035,13 +1035,23 @@ doca_dpdk_build_modify_actions(struct doca_flow_pipe_cfg *cfg,
 	return ret;
 }
 
-static void
+void
 doca_dpdk_build_end_action(struct doca_dpdk_pipe *pipe)
 {
 	struct rte_flow_action *action =
 	    &pipe->actions[pipe->nb_actions_entry];
 
 	action->type = RTE_FLOW_ACTION_TYPE_END;
+}
+
+void
+doca_dpdk_build_drop_action(struct doca_dpdk_pipe *pipe)
+{
+	struct rte_flow_action *action =
+	    &pipe->actions[pipe->nb_actions_entry++];
+
+	action->type = RTE_FLOW_ACTION_TYPE_DROP;
+	doca_dpdk_build_end_action(pipe);
 }
 
 static inline uint64_t
@@ -1562,7 +1572,7 @@ __doca_dpdk_create_pipe(struct doca_dpdk_pipe *flow,
 	}
 
 	doca_dump_rte_flow("create pipe:", flow->port_id, &flow->attr,
-			   flow->items, flow->actions);
+	                   flow->items, flow->actions);
 	return 0;
 }
 
