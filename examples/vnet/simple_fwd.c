@@ -65,8 +65,8 @@ sf_aged_flow_cb(struct doca_ft_user_ctx *ctx)
 	struct sf_entry *entry = (struct sf_entry *)&ctx->data[0];
 
 	if (entry->is_hw) {
-            doca_flow_rm_entry(0, entry->hw_entry);
-            entry->hw_entry = NULL;
+		doca_flow_pipe_rm_entry(0, entry->hw_entry);
+		entry->hw_entry = NULL;
 	}
 }
 

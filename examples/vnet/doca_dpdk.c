@@ -67,8 +67,6 @@ doca_dpdk_init(struct doca_flow_cfg *cfg)
 		doca_dpdk_fwd_conf.port_to_q[0] = cfg->queues;
 		doca_dpdk_fwd_conf.port_to_q[1] = cfg->queues;
 	}
-	doca_dpdk_init_port(0);
-	doca_dpdk_init_port(1);
 	doca_encap_table_init(DOCA_MAX_ENCAPS);
         doca_flow_cfg = *cfg;
 }
@@ -1510,16 +1508,16 @@ doca_dpdk_free_pipe_entry(uint16_t portid,
 	}
 	return 0;
 }
-/*todo , how to manager root/queue flows for one port.*/
-int doca_dpdk_init_port(uint16_t port_id)
+
+int doca_dpdk_init_port(struct doca_flow_port *port)
 {
 	struct rte_flow *root, *queue;
 
-	root = doca_dpdk_create_root_jump(port_id);
-	if (root == NULL)
+	port->default_jump_flow = doca_dpdk_create_root_jump(port->port_id);
+	if (port->default_jump_flow == NULL)
 		return -1;
-	queue = doca_dpdk_create_def_rss(port_id);
-	if (queue == NULL)
+	port->default_rss_flow = doca_dpdk_create_def_rss(port->port_id);
+	if (port->default_rss_flow == NULL)
 		return -1;
 	return 0;
 }
@@ -1544,7 +1542,7 @@ __doca_dpdk_create_pipe(struct doca_dpdk_pipe *flow,
 	flow->attr.group = 1; // group 0 jump group 1
 	ret = doca_dpdk_build_item(cfg->match, cfg->match_mask, flow, err);
 	if (ret) {
-		err->type = DOCA_ERROR_PIPE_BUILD_IMTE_ERROR;
+		err->type = DOCA_ERROR_PIPE_BUILD_ITEM_ERROR;
 		return -1;
 	}
 	ret = doca_dpdk_build_modify_actions(cfg, flow);
@@ -1658,13 +1656,49 @@ doca_dpdk_port_start(struct doca_flow_port_cfg *cfg,
 	memset(port, 0, sizeof(struct doca_flow_port));
 	if (!doca_dpdk_save_port(port))
 		goto fail_port_start;
+	doca_dpdk_init_port(port);
 	return port;
 fail_port_start:
 	free(port);
 	return NULL;
 }
 
-static void
+int
+doca_dpdk_port_stop(struct doca_flow_port *port)
+{
+	int ret;
+	struct rte_flow_error flow_err;
+
+	if (port == NULL)
+		return 0;
+	if (port->default_jump_flow) {
+		ret = rte_flow_destroy(port->port_id,
+				(struct rte_flow *)port->default_rss_flow,
+				&flow_err);
+		if (ret)
+			goto error;
+		port->default_jump_flow = NULL;
+	}
+	if (port->default_rss_flow) {
+		ret = rte_flow_destroy(port->port_id,
+				(struct rte_flow *)port->default_rss_flow,
+				&flow_err);
+		if (ret)
+			goto error;
+		port->default_rss_flow = NULL;
+	}
+	doca_dpdk_used_ports[port->port_id] = NULL;
+	free(port);
+	return 0;
+error:
+	DOCA_LOG_ERR("Port %u free flow fail, type %d message: %s",
+			port->port_id, flow_err.type,
+			flow_err.message ? flow_err.message
+					: "(no stated reason)");
+	return ret;
+}
+
+void
 doca_dpdk_free_pipe(uint16_t portid,
                     struct doca_flow_pipe *pipe)
 {
@@ -1695,13 +1729,13 @@ doca_dpdk_free_pipe(uint16_t portid,
 }
 
 void
-doca_dpdk_destroy(uint16_t port_id)
+doca_dpdk_flush_pipe(uint16_t port_id)
 {
 	struct doca_flow_port *port;
 	struct doca_flow_pipe *pipe;
 
 	port = doca_get_port_byid(port_id);
-	if (port)
+	if (port == NULL)
 		return;
 	rte_spinlock_lock(&port->pipe_lock);
 	while ((pipe = LIST_FIRST(&port->pipe_list))) {
@@ -1709,8 +1743,20 @@ doca_dpdk_destroy(uint16_t port_id)
 		doca_dpdk_free_pipe(port_id, pipe);
 	}
 	rte_spinlock_unlock(&port->pipe_lock);
-	doca_dpdk_used_ports[port_id] = NULL;
-	free(port);
+}
+
+void doca_dpdk_destroy(uint16_t port_id)
+{
+	doca_dpdk_flush_pipe(port_id);
+	doca_dpdk_port_stop(doca_dpdk_used_ports[port_id]);
+	if (doca_dpdk_engine.meter_pool) {
+		free(doca_dpdk_engine.meter_pool);
+		doca_dpdk_engine.meter_pool = NULL;
+	}
+	if (doca_dpdk_engine.meter_profile_pool) {
+		free(doca_dpdk_engine.meter_profile_pool);
+		doca_dpdk_engine.meter_profile_pool = NULL;
+	}
 }
 
 void

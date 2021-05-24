@@ -49,9 +49,10 @@ struct doca_flow_pipe {
 struct doca_flow_port {
 	uint32_t port_id;
 	int idx;
-
 	rte_spinlock_t pipe_lock;
 	LIST_HEAD(, doca_flow_pipe) pipe_list;
+	void *default_jump_flow;
+	void *default_rss_flow;
 	uint8_t user_data[0];
 };
 
