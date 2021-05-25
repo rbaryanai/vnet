@@ -795,12 +795,13 @@ doca_dpdk_modify_encap_action(struct doca_dpdk_pipe *pipe,
 	} else {
 		id = doca_encap_table_add_id(encap_data);
 		if (doca_encap_table_get_refcnt(id) == 1) {
-			if (!doca_dpdk_add_tx_encap(pipe->port_id, id, &encap->conf)) {
-				meta->data = id;
-				meta->conf.data = meta->data;
-				meta->conf.mask = UINT32_MAX;
+			if (doca_dpdk_add_tx_encap(pipe->port_id, id, &encap->conf)) {
+				return -1;
 			}
 		}
+		meta->data = id;
+		meta->conf.data = meta->data;
+		meta->conf.mask = UINT32_MAX;
 		action->type = RTE_FLOW_ACTION_TYPE_SET_META;
 		action->conf = &meta->conf;
 	}
