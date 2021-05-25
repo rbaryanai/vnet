@@ -1042,7 +1042,7 @@ void
 doca_dpdk_build_end_action(struct doca_dpdk_pipe *pipe)
 {
 	struct rte_flow_action *action =
-	    &pipe->actions[pipe->nb_actions_entry];
+	    &pipe->actions[pipe->nb_actions_pipe];
 
 	action->type = RTE_FLOW_ACTION_TYPE_END;
 }
@@ -1051,7 +1051,7 @@ void
 doca_dpdk_build_drop_action(struct doca_dpdk_pipe *pipe)
 {
 	struct rte_flow_action *action =
-	    &pipe->actions[pipe->nb_actions_entry++];
+	    &pipe->actions[pipe->nb_actions_pipe++];
 
 	action->type = RTE_FLOW_ACTION_TYPE_DROP;
 	doca_dpdk_build_end_action(pipe);
