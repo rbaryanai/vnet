@@ -312,6 +312,21 @@ static inline bool doca_match_is_ipv4(struct doca_flow_match *match,
 	return (ip_addr.type == DOCA_IPV4);
 }
 
+static inline bool doca_match_is_ipv6(struct doca_flow_match *match,
+				      uint8_t type)
+{
+	struct doca_ip_addr ip_addr;
+
+	if (type == INNER_MATCH)
+		ip_addr = match->in_src_ip.type != DOCA_NONE ? match->in_src_ip
+							     : match->in_dst_ip;
+	else
+		ip_addr = match->out_src_ip.type != DOCA_NONE
+			      ? match->out_src_ip
+			      : match->out_dst_ip;
+	return (ip_addr.type == DOCA_IPV6);
+}
+
 static inline rte_be16_t doca_dpdk_get_l3_protol(struct doca_flow_match *match,
 						 uint8_t type)
 {
