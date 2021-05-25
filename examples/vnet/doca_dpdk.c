@@ -552,8 +552,10 @@ doca_dpdk_build_item(struct doca_flow_match *match,
 		type = INNER_MATCH;
 		if (doca_match_is_ipv4(match, type))
 			doca_dpdk_build_ipv4_flow_item(NEXT_ITEM, match, mask, type);
-		else
+		else if (doca_match_is_ipv6(match, type))
 			doca_dpdk_build_ipv6_flow_item(NEXT_ITEM, match, mask, type);
+		else
+			goto out;
 	}
 	if (doca_match_is_tcp(match))
 		doca_dpdk_build_tcp_flow_item(NEXT_ITEM, match, mask, type);
@@ -563,6 +565,7 @@ doca_dpdk_build_item(struct doca_flow_match *match,
 		DOCA_LOG_INFO("not support l3 type.\n");
 		return -1;
 	}
+out:
 	doca_dpdk_build_end_flow_item(NEXT_ITEM);
 	pipe_flow->nb_items = idx;
 	return 0;
