@@ -1665,7 +1665,6 @@ doca_dpdk_port_start(struct doca_flow_port_cfg *cfg,
 
 	if (port == NULL)
 		return NULL;
-	memset(port, 0, sizeof(struct doca_flow_port));
 	if (!doca_dpdk_save_port(port))
 		goto fail_port_start;
 	return port;
