@@ -43,6 +43,7 @@ int doca_flow_chain_init(int flags)
     if (flags & DOCA_FLOW_CHAIN_ACL)
         doca_dpdk_enable_acl();
     if (flags & DOCA_FLOW_CHAIN_ISOLATE_MODE) {
+        doca_dpdk_set_isolate_mode();
         isolate_mode = true;
         isolate_pass.idx = 0;
         isolate_drop.idx = 0;

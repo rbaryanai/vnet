@@ -367,7 +367,7 @@ struct doca_flow_pipe_entry *doca_dpdk_add_pipe_entry(
 	struct doca_flow_monitor *mon, struct doca_flow_fwd *cfg,
 	struct doca_flow_error *err);
 
-int doca_dpdk_init_port(struct doca_flow_port *port);
+int doca_dpdk_init_port(struct doca_flow_port *port, int queues);
 int doca_dpdk_free_pipe_entry(uint16_t portid,
 			      struct doca_flow_pipe_entry *entry);
 
@@ -378,7 +378,5 @@ void doca_dpdk_destroy(uint16_t port_id);
 void doca_dpdk_free_pipe(uint16_t portid, struct doca_flow_pipe *pipe);
 void doca_dpdk_flush_pipe(uint16_t port_id);
 void doca_dpdk_dump_pipe(uint16_t port_id);
-
-void doca_dpdk_enable_acl(void);
 
 #endif

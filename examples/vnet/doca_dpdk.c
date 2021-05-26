@@ -32,6 +32,7 @@ DOCA_LOG_MODULE(doca_dpdk);
 
 struct doca_dpdk_engine {
 	bool has_acl;
+	bool isolate_mode;
 	struct doca_id_pool *meter_pool;
 	struct doca_id_pool *meter_profile_pool;
 };
@@ -75,6 +76,12 @@ void
 doca_dpdk_enable_acl(void)
 {
     doca_dpdk_engine.has_acl = true;
+}
+
+void
+doca_dpdk_set_isolate_mode(void)
+{
+	doca_dpdk_engine.isolate_mode = true;
 }
 
 static int
@@ -1386,12 +1393,13 @@ doca_dpdk_create_root_jump(uint16_t port_id)
 }
 
 static struct rte_flow *
-doca_dpdk_create_def_rss(uint16_t port_id)
+doca_dpdk_create_def_rss(uint16_t port_id, int queues)
 {
 	struct rte_flow_action actions[MAX_ACTIONS];
 	struct rte_flow_item items[MAX_ITEMS];
 	struct doca_dpdk_action_rss_data rss;
 	struct rte_flow_attr attr;
+	int qidx;
 
 	memset(&attr, 0x0, sizeof(struct rte_flow_attr));
 	memset(items, 0x0, sizeof(items));
@@ -1403,8 +1411,10 @@ doca_dpdk_create_def_rss(uint16_t port_id)
 	items[1].type = RTE_FLOW_ITEM_TYPE_END;
 
 	memset(&rss, 0x0, sizeof(rss));
-	rss.queue[0] = 0;
-	rss.conf.queue_num = 1;
+	for (qidx = 0; qidx < queues; qidx++) {
+		rss.queue[qidx] = qidx;
+	}
+	rss.conf.queue_num = queues;
 	rss.conf.func = RTE_ETH_HASH_FUNCTION_DEFAULT;
 	rss.conf.types = ETH_RSS_IP | ETH_RSS_UDP | ETH_RSS_TCP;
 	rss.conf.queue = rss.queue;
@@ -1523,14 +1533,14 @@ doca_dpdk_free_pipe_entry(uint16_t portid,
 	return 0;
 }
 
-int doca_dpdk_init_port(struct doca_flow_port *port)
+int doca_dpdk_init_port(struct doca_flow_port *port, int queues)
 {
-	struct rte_flow *root, *queue;
-
-	port->default_jump_flow = doca_dpdk_create_root_jump(port->port_id);
-	if (port->default_jump_flow == NULL)
-		return -1;
-	port->default_rss_flow = doca_dpdk_create_def_rss(port->port_id);
+	if (!doca_dpdk_engine.isolate_mode) {
+		port->default_jump_flow = doca_dpdk_create_root_jump(port->port_id);
+		if (port->default_jump_flow == NULL)
+			return -1;
+	}
+	port->default_rss_flow = doca_dpdk_create_def_rss(port->port_id, queues);
 	if (port->default_rss_flow == NULL)
 		return -1;
 	return 0;
@@ -1585,38 +1595,43 @@ doca_dpdk_create_pipe(struct doca_flow_pipe_cfg *cfg,
                       struct doca_flow_fwd *fwd,
                       struct doca_flow_error *err)
 {
-	int ret;
-	uint32_t idx;
-        int i;
+	int pipe_size = sizeof(struct doca_flow_pipe) +
+                           sizeof(LIST_HEAD(, doca_flow_pipe_entry))*doca_flow_cfg.queues;
 	static uint32_t pipe_id = 1;
-	struct doca_flow_pipe *pl;
 	struct doca_dpdk_pipe *flow;
-        int pipe_size = sizeof(struct doca_flow_pipe) +
-                            sizeof(LIST_HEAD(, doca_flow_pipe_entry))*doca_flow_cfg.queues;
+	struct doca_flow_pipe *pl;
+	uint32_t idx;
+	int ret, i;
+
 	DOCA_LOG_DBG("port:%u create pipe:%s\n", cfg->port->port_id, cfg->name);
 	doca_dump_flow_match(cfg->match);
 	doca_dump_flow_actions(cfg->actions);
+
 	pl = malloc(pipe_size);
 	if (pl == NULL)
 		return NULL;
 	memset(pl, 0, pipe_size);
 	strcpy(pl->name, cfg->name);
-        for ( i = 0; i < doca_flow_cfg.queues ; i++)
-            LIST_INIT(&pl->entry_list[i]);
+
+	for ( i = 0; i < doca_flow_cfg.queues ; i++)
+		LIST_INIT(&pl->entry_list[i]);
 	rte_spinlock_init(&pl->entry_lock);
+
 	pl->id = pipe_id++;
 	flow = &pl->flow;
 	for (idx = 0; idx < MAX_ITEMS; idx++)
 		flow->item_entry[idx].item = &pl->flow.items[idx];
 	for (idx = 0; idx < MAX_ACTIONS; idx++)
 		flow->action_entry[idx].action = &pl->flow.actions[idx];
+
 	ret = __doca_dpdk_create_pipe(flow, cfg, fwd, err);
 	if (ret) {
 		free(pl);
 		return NULL;
 	}
-        if (fwd != NULL)
-            pl->fwd = *fwd;
+	if (fwd != NULL)
+		pl->fwd = *fwd;
+
 	rte_spinlock_lock(&cfg->port->pipe_lock);
 	LIST_INSERT_HEAD(&cfg->port->pipe_list, pl, next);
 	rte_spinlock_unlock(&cfg->port->pipe_lock);
@@ -1669,7 +1684,7 @@ doca_dpdk_port_start(struct doca_flow_port_cfg *cfg,
 		return NULL;
 	if (!doca_dpdk_save_port(port))
 		goto fail_port_start;
-	doca_dpdk_init_port(port);
+	doca_dpdk_init_port(port, cfg->queues);
 	return port;
 fail_port_start:
 	free(port);

@@ -77,4 +77,8 @@ doca_dpdk_create_rte_flow(uint16_t port_id, const struct rte_flow_attr *attr,
 void
 doca_dpdk_build_end_action(struct doca_dpdk_pipe *pipe);
 
+void doca_dpdk_enable_acl(void);
+
+void doca_dpdk_set_isolate_mode(void);
+
 #endif
