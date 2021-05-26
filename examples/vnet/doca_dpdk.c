@@ -1595,38 +1595,43 @@ doca_dpdk_create_pipe(struct doca_flow_pipe_cfg *cfg,
                       struct doca_flow_fwd *fwd,
                       struct doca_flow_error *err)
 {
-	int ret;
-	uint32_t idx;
-        int i;
+	int pipe_size = sizeof(struct doca_flow_pipe) +
+                           sizeof(LIST_HEAD(, doca_flow_pipe_entry))*doca_flow_cfg.queues;
 	static uint32_t pipe_id = 1;
-	struct doca_flow_pipe *pl;
 	struct doca_dpdk_pipe *flow;
-        int pipe_size = sizeof(struct doca_flow_pipe) +
-                            sizeof(LIST_HEAD(, doca_flow_pipe_entry))*doca_flow_cfg.queues;
+	struct doca_flow_pipe *pl;
+	uint32_t idx;
+	int ret, i;
+
 	DOCA_LOG_DBG("port:%u create pipe:%s\n", cfg->port->port_id, cfg->name);
 	doca_dump_flow_match(cfg->match);
 	doca_dump_flow_actions(cfg->actions);
+
 	pl = malloc(pipe_size);
 	if (pl == NULL)
 		return NULL;
 	memset(pl, 0, pipe_size);
 	strcpy(pl->name, cfg->name);
-        for ( i = 0; i < doca_flow_cfg.queues ; i++)
-            LIST_INIT(&pl->entry_list[i]);
+
+	for ( i = 0; i < doca_flow_cfg.queues ; i++)
+		LIST_INIT(&pl->entry_list[i]);
 	rte_spinlock_init(&pl->entry_lock);
+
 	pl->id = pipe_id++;
 	flow = &pl->flow;
 	for (idx = 0; idx < MAX_ITEMS; idx++)
 		flow->item_entry[idx].item = &pl->flow.items[idx];
 	for (idx = 0; idx < MAX_ACTIONS; idx++)
 		flow->action_entry[idx].action = &pl->flow.actions[idx];
+
 	ret = __doca_dpdk_create_pipe(flow, cfg, fwd, err);
 	if (ret) {
 		free(pl);
 		return NULL;
 	}
-        if (fwd != NULL)
-            pl->fwd = *fwd;
+	if (fwd != NULL)
+		pl->fwd = *fwd;
+
 	rte_spinlock_lock(&cfg->port->pipe_lock);
 	LIST_INSERT_HEAD(&cfg->port->pipe_list, pl, next);
 	rte_spinlock_unlock(&cfg->port->pipe_lock);
