@@ -550,8 +550,10 @@ doca_dpdk_build_item(struct doca_flow_match *match,
 		type = INNER_MATCH;
 		if (doca_match_is_ipv4(match, type))
 			doca_dpdk_build_ipv4_flow_item(NEXT_ITEM, match, mask, type);
-		else
+		else if (doca_match_is_ipv6(match, type))
 			doca_dpdk_build_ipv6_flow_item(NEXT_ITEM, match, mask, type);
+		else
+			goto out;
 	}
 	if (doca_match_is_tcp(match))
 		doca_dpdk_build_tcp_flow_item(NEXT_ITEM, match, mask, type);
@@ -561,6 +563,7 @@ doca_dpdk_build_item(struct doca_flow_match *match,
 		DOCA_LOG_INFO("not support l3 type.\n");
 		return -1;
 	}
+out:
 	doca_dpdk_build_end_flow_item(NEXT_ITEM);
 	pipe_flow->nb_items = idx;
 	return 0;
@@ -793,12 +796,13 @@ doca_dpdk_modify_encap_action(struct doca_dpdk_pipe *pipe,
 	} else {
 		id = doca_encap_table_add_id(encap_data);
 		if (doca_encap_table_get_refcnt(id) == 1) {
-			if (!doca_dpdk_add_tx_encap(pipe->port_id, id, &encap->conf)) {
-				meta->data = id;
-				meta->conf.data = meta->data;
-				meta->conf.mask = UINT32_MAX;
+			if (doca_dpdk_add_tx_encap(pipe->port_id, id, &encap->conf)) {
+				return -1;
 			}
 		}
+		meta->data = id;
+		meta->conf.data = meta->data;
+		meta->conf.mask = UINT32_MAX;
 		action->type = RTE_FLOW_ACTION_TYPE_SET_META;
 		action->conf = &meta->conf;
 	}
@@ -1039,7 +1043,7 @@ void
 doca_dpdk_build_end_action(struct doca_dpdk_pipe *pipe)
 {
 	struct rte_flow_action *action =
-	    &pipe->actions[pipe->nb_actions_entry];
+	    &pipe->actions[pipe->nb_actions_pipe];
 
 	action->type = RTE_FLOW_ACTION_TYPE_END;
 }
@@ -1048,7 +1052,7 @@ void
 doca_dpdk_build_drop_action(struct doca_dpdk_pipe *pipe)
 {
 	struct rte_flow_action *action =
-	    &pipe->actions[pipe->nb_actions_entry++];
+	    &pipe->actions[pipe->nb_actions_pipe++];
 
 	action->type = RTE_FLOW_ACTION_TYPE_DROP;
 	doca_dpdk_build_end_action(pipe);
