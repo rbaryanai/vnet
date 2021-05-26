@@ -106,9 +106,10 @@ int doca_encap_table_init(int max_encaps)
 
 int doca_encap_table_add_id(struct doca_flow_encap_action *ea)
 {
-    struct encap_table_key key = {0};
+    struct encap_table_key key;
     int id = 0;
 
+    memset(&key, 0x0, sizeof key);
     rte_spinlock_lock(&encap_table_ins->lock);
     if ((id = doca_encap_table_get_id(ea)) >= 0) {
         encap_table_ins->entries[id].refcnt++;
@@ -138,8 +139,9 @@ int doca_encap_table_add_id(struct doca_flow_encap_action *ea)
 int doca_encap_table_get_id(struct doca_flow_encap_action *ea)
 {
     int id;
-    struct encap_table_key key = {0};
+    struct encap_table_key key;
 
+    memset(&key, 0x0, sizeof key);
     key.src_ip = ea->src_ip;
     key.dst_ip = ea->dst_ip;
     key.tun = ea->tun;

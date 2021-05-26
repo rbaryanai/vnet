@@ -123,7 +123,6 @@ static struct doca_flow_fwd *sf_build_rss_fwd(int n_queues)
 	return fwd;
 }
 
-
 struct doca_flow_port *
 sf_init_doca_port(struct sf_port_cfg *port_cfg)
 {
@@ -157,27 +156,7 @@ sf_init_doca_port(struct sf_port_cfg *port_cfg)
 	return port;
 }
 
-static void
-build_match_tunnel_5tuple(struct doca_flow_match *match)
-{
-	match->out_dst_ip.a.ipv4_addr = 0xffffffff;
-	match->out_dst_ip.type = DOCA_IPV4;
-    match->out_l4_type = IPPROTO_UDP;
-	match->out_dst_port = rte_cpu_to_be_16(DOCA_VXLAN_DEFAULT_PORT);
-
-    match->tun.type = DOCA_TUN_VXLAN;
-    match->tun.vxlan.tun_id = 0xffffffff;
-
-	match->in_dst_ip.a.ipv4_addr = 0xffffffff;
-	match->in_src_ip.a.ipv4_addr = 0xffffffff;
-	match->in_src_ip.type = DOCA_IPV4;
-	match->in_l4_type = 0x6;
-
-	match->in_src_port = 0xffff;
-	match->in_dst_port = 0xffff;
-}
-
-static void build_match_5tuple(struct doca_flow_match *match)
+__rte_unused static void build_match_5tuple(struct doca_flow_match *match)
 {
     match->out_dst_ip.a.ipv4_addr = 0xffffffff;
     match->out_src_ip.a.ipv4_addr = 0xffffffff;
@@ -235,24 +214,24 @@ build_fwd_pipe(struct doca_flow_port *port,uint16_t fwd_port_id)
 	struct doca_flow_error err = {0};
 	struct doca_flow_match match;
 	struct doca_flow_actions actions = {0};
-//    struct doca_flow_fwd fwd;
+	//struct doca_flow_fwd fwd;
         
 	memset(&match, 0x0, sizeof(match));
 	memset(&pipe_cfg, 0, sizeof pipe_cfg);
-    //build_match_5tuple(&match);
+	//build_match_5tuple(&match);
 	build_match_tun_and_5tuple(&match);
-    build_decap_action(&actions);
-    build_encap_action(&actions);
+	build_decap_action(&actions);
+	build_encap_action(&actions);
 
 	pipe_cfg.name = "FWD";
 	pipe_cfg.port = port;
 	pipe_cfg.match = &match;
 	pipe_cfg.actions = &actions;
 	pipe_cfg.count = false;
-/*    fwd = sf_build_port_fwd
-    fwd.type = DOCA_FWD_PORT;
-    fwd.port.id = fwd_port_id; 
-    fwd.port.hairpin = hairpin;*/
+	/*fwd = sf_build_port_fwd
+	fwd.type = DOCA_FWD_PORT;
+	fwd.port.id = fwd_port_id;
+	fwd.port.hairpin = hairpin;*/
 	return doca_flow_create_pipe(&pipe_cfg, sw_rss_fwd_tbl_port[fwd_port_id], &err);
 	//return doca_flow_create_pipe(&pipe_cfg, fwd_tbl_port[fwd_port_id], &err);
 }
