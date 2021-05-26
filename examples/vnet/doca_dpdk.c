@@ -1125,6 +1125,18 @@ doca_dpdk_build_port_action(struct doca_dpdk_action_entry *entry,
     return 0;
 }
 
+static void
+doca_dpdk_build_pipe_fwd(struct doca_dpdk_action_entry *entry,
+                         int group)
+{
+	struct rte_flow_action *action = entry->action;
+	struct rte_flow_action_jump jump;
+
+	jump.group = group;
+	action->type = RTE_FLOW_ACTION_TYPE_JUMP;
+	action->conf = &jump;
+}
+
 static int
 doca_dpdk_build_fwd_action(struct doca_dpdk_pipe *pipe,
                            struct doca_flow_fwd *fwd_cfg,
@@ -1142,7 +1154,8 @@ doca_dpdk_build_fwd_action(struct doca_dpdk_pipe *pipe,
 	/* if we already create the forward action don't do it again */
 	if (action_entry->action->type == RTE_FLOW_ACTION_TYPE_QUEUE ||
 		action_entry->action->type == RTE_FLOW_ACTION_TYPE_PORT_ID ||
-		action_entry->action->type == RTE_FLOW_ACTION_TYPE_RSS) {
+		action_entry->action->type == RTE_FLOW_ACTION_TYPE_RSS ||
+		action_entry->action->type == RTE_FLOW_ACTION_TYPE_JUMP) {
 		return -1;
 	}
 
@@ -1153,6 +1166,9 @@ doca_dpdk_build_fwd_action(struct doca_dpdk_pipe *pipe,
     case DOCA_FWD_PORT:
         doca_dpdk_build_port_action(action_entry, fwd_cfg->port.id);
         break;
+	case DOCA_FWD_PIPE:
+		doca_dpdk_build_pipe_fwd(action_entry, fwd_cfg->next_pipe.next->id);
+		break;
 	default:
 		return 1;
 	}
