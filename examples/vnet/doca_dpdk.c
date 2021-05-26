@@ -32,6 +32,7 @@ DOCA_LOG_MODULE(doca_dpdk);
 
 struct doca_dpdk_engine {
 	bool has_acl;
+	bool isolate_mode;
 	struct doca_id_pool *meter_pool;
 	struct doca_id_pool *meter_profile_pool;
 };
@@ -75,6 +76,12 @@ void
 doca_dpdk_enable_acl(void)
 {
     doca_dpdk_engine.has_acl = true;
+}
+
+void
+doca_dpdk_set_isolate_mode(void)
+{
+	doca_dpdk_engine.isolate_mode = true;
 }
 
 static int
@@ -1528,9 +1535,11 @@ doca_dpdk_free_pipe_entry(uint16_t portid,
 
 int doca_dpdk_init_port(struct doca_flow_port *port, int queues)
 {
-	port->default_jump_flow = doca_dpdk_create_root_jump(port->port_id);
-	if (port->default_jump_flow == NULL)
-		return -1;
+	if (!doca_dpdk_engine.isolate_mode) {
+		port->default_jump_flow = doca_dpdk_create_root_jump(port->port_id);
+		if (port->default_jump_flow == NULL)
+			return -1;
+	}
 	port->default_rss_flow = doca_dpdk_create_def_rss(port->port_id, queues);
 	if (port->default_rss_flow == NULL)
 		return -1;

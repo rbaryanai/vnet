@@ -379,6 +379,4 @@ void doca_dpdk_free_pipe(uint16_t portid, struct doca_flow_pipe *pipe);
 void doca_dpdk_flush_pipe(uint16_t port_id);
 void doca_dpdk_dump_pipe(uint16_t port_id);
 
-void doca_dpdk_enable_acl(void);
-
 #endif
