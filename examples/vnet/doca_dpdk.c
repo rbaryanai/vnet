@@ -1073,7 +1073,7 @@ doca_dpdk_get_rss_type(uint32_t rss_type)
 	return rss_flags;
 }
 
-static int
+static void
 doca_dpdk_build_rss_action(struct doca_dpdk_action_entry *entry,
                            struct doca_flow_fwd *fwd_cfg)
 {
@@ -1102,10 +1102,9 @@ doca_dpdk_build_rss_action(struct doca_dpdk_action_entry *entry,
 	rss->conf.queue = rss->queue;
 	rss_action->type = RTE_FLOW_ACTION_TYPE_RSS;
 	rss_action->conf = &rss->conf;
-	return 0;
 }
 
-static int
+static void
 doca_dpdk_build_port_action(struct doca_dpdk_action_entry *entry,
                             uint16_t idx)
 {
@@ -1122,7 +1121,6 @@ doca_dpdk_build_port_action(struct doca_dpdk_action_entry *entry,
         action->type = RTE_FLOW_ACTION_TYPE_PORT_ID;
         action->conf = &fwd->port_id_conf;
     }
-    return 0;
 }
 
 static void
