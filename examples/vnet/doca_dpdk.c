@@ -51,11 +51,22 @@ struct doca_dpdk_fwd_conf doca_dpdk_fwd_conf;
 
 static struct doca_flow_port *doca_dpdk_used_ports[DOCA_FLOW_MAX_PORTS];
 
-void
-doca_dpdk_init(struct doca_flow_cfg *cfg)
+int
+doca_dpdk_init(struct doca_flow_cfg *cfg, struct doca_flow_error *err)
 {
 	struct doca_id_pool_cfg pool_cfg = {.size = cfg->total_sessions,
 					    .min = 1};
+
+	if (cfg->total_sessions < pool_cfg.min) {
+		err->type = DOCA_ERROR_UNSUPPORTED;
+		err->message = "total session less than minimal pool size";
+		return -EINVAL;
+	}
+	if (cfg->queues == 0) {
+		err->type = DOCA_ERROR_UNSUPPORTED;
+		err->message = "queues value cannot be zero";
+		return -EINVAL;
+	}
 	memset(&doca_dpdk_engine, 0, sizeof(doca_dpdk_engine));
 	memset(&doca_dpdk_fwd_conf, 0, sizeof(doca_dpdk_fwd_conf));
 	memset(doca_dpdk_used_ports, 0, sizeof(doca_dpdk_used_ports));
@@ -70,6 +81,7 @@ doca_dpdk_init(struct doca_flow_cfg *cfg)
 	}
 	doca_encap_table_init(DOCA_MAX_ENCAPS);
         doca_flow_cfg = *cfg;
+	return 0;
 }
 
 void
@@ -1512,6 +1524,7 @@ doca_dpdk_add_pipe_entry(struct doca_flow_pipe *pipe,
 		goto free_pipe_entry;
 	}
 	entry->id = pipe->pipe_entry_id++;
+	entry->flow_pipe = pipe;
 	rte_spinlock_lock(&pipe->entry_lock);
 	pipe->nb_pipe_entrys++;
 	LIST_INSERT_HEAD(&pipe->entry_list[pipe_queue], entry, next);

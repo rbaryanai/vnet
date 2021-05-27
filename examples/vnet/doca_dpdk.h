@@ -354,7 +354,7 @@ static inline bool doca_match_is_udp(struct doca_flow_match *match)
 	return (match->in_l4_type == IPPROTO_UDP);
 }
 
-void doca_dpdk_init(struct doca_flow_cfg *cfg);
+int doca_dpdk_init(struct doca_flow_cfg *cfg, struct doca_flow_error *err);
 
 struct doca_flow_pipe *
 doca_dpdk_create_pipe(struct doca_flow_pipe_cfg *cfg,
@@ -363,14 +363,13 @@ doca_dpdk_create_pipe(struct doca_flow_pipe_cfg *cfg,
 
 struct doca_flow_pipe_entry *doca_dpdk_add_pipe_entry(
 	struct doca_flow_pipe *pipe, uint16_t pipe_queue,
-    struct doca_flow_match *match, struct doca_flow_actions *actions,
+	struct doca_flow_match *match, struct doca_flow_actions *actions,
 	struct doca_flow_monitor *mon, struct doca_flow_fwd *cfg,
 	struct doca_flow_error *err);
 
 int doca_dpdk_init_port(struct doca_flow_port *port, int queues);
 int doca_dpdk_free_pipe_entry(uint16_t portid,
 			      struct doca_flow_pipe_entry *entry);
-
 struct doca_flow_port *doca_dpdk_port_start(struct doca_flow_port_cfg *cfg,
 					    struct doca_flow_error *err);
 int doca_dpdk_port_stop(struct doca_flow_port *port);

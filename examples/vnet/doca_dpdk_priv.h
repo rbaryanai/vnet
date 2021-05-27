@@ -30,6 +30,7 @@ struct doca_flow_pipe_entry {
 	int id;
 	uint32_t meter_id;
 	void *pipe_entry;
+	void *flow_pipe;
 };
 
 #define TMP_BUFF 128
