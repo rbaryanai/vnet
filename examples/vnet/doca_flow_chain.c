@@ -52,8 +52,7 @@ int doca_flow_chain_init(int flags)
 }
 
 static void
-build_jump_action(struct doca_flow_pipe_cfg *pipe_cfg,
-                  struct doca_dpdk_pipe *flow)
+build_jump_action(struct doca_dpdk_pipe *flow)
 {
     struct doca_dpdk_action_entry *entry =
         &flow->action_entry[flow->nb_actions_pipe++];
@@ -110,7 +109,7 @@ build_flow_isolate(struct doca_flow_port *port,
             DOCA_LOG_ERR("Failed to build isolate actions.\n");
             return NULL;
         }
-        build_jump_action(&pipe_cfg, &flow);
+        build_jump_action(&flow);
         flow.attr.priority = 1;
     }
 

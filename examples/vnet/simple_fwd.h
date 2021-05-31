@@ -28,4 +28,9 @@ struct sf_port_cfg {
 
 struct doca_vnf *simple_fwd_get_doca_vnf(void);
 int sf_start_dpdk_port(struct sf_port_cfg *);
+struct doca_flow_port *
+sf_init_doca_port(struct sf_port_cfg *port_cfg);
+struct doca_flow_pipe_entry *
+sf_pipe_add_entry(struct doca_pkt_info *pinfo,
+			      struct doca_flow_pipe *pipe);
 #endif

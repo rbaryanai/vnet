@@ -1195,9 +1195,10 @@ doca_dpdk_build_fwd_action(struct doca_dpdk_pipe *pipe,
 }
 
 static int
-doca_dpdk_create_meter_profile(uint16_t port_id, uint32_t id,
-                               struct doca_flow_monitor *mon)
+doca_dpdk_create_meter_profile(__rte_unused uint16_t port_id, __rte_unused uint32_t id,
+                               __rte_unused struct doca_flow_monitor *mon)
 {
+	#ifdef SUPPORT_METER
 	struct rte_mtr_meter_profile mp;
 	struct rte_mtr_error error;
 	int ret;
@@ -1216,12 +1217,13 @@ doca_dpdk_create_meter_profile(uint16_t port_id, uint32_t id,
 		    error.message ? error.message : "(no stated reason)");
 		return -1;
 	}
+	#endif
 	return 0;
 }
 
 static int
-doca_dpdk_create_meter_rule(int port_id, uint32_t meter_info,
-                            uint32_t meter_id)
+doca_dpdk_create_meter_rule(__rte_unused int port_id, __rte_unused uint32_t meter_info,
+                            __rte_unused uint32_t meter_id)
 
 {
 #ifdef SUPPORT_METER
@@ -1249,8 +1251,8 @@ doca_dpdk_create_meter_rule(int port_id, uint32_t meter_info,
 }
 
 static int
-doca_dpdk_create_meter_policy(uint16_t port_id, uint32_t policy_id,
-                              struct doca_flow_monitor *mon)
+doca_dpdk_create_meter_policy(__rte_unused uint16_t port_id, __rte_unused uint32_t policy_id,
+                              __rte_unused struct doca_flow_monitor *mon)
 {
 #ifdef SUPPORT_METER
 	struct rte_flow_action g_actions[2], r_actions[2];
@@ -1542,11 +1544,14 @@ doca_dpdk_free_pipe_entry(uint16_t portid,
                           struct doca_flow_pipe_entry *entry)
 {
 	struct rte_flow_error flow_err;
-	struct rte_mtr_error mtr_err;
 	int ret;
 
-	if (entry->meter_id)
+	#ifdef SUPPORT_METER
+	if (entry->meter_id) {
+		struct rte_mtr_error mtr_err;
 		rte_mtr_destroy(portid, entry->meter_id, &mtr_err);
+	}
+	#endif
 
 	ret = rte_flow_destroy(portid, (struct rte_flow *)entry->pipe_entry,
 			       &flow_err);
@@ -1773,10 +1778,12 @@ doca_dpdk_free_pipe(uint16_t portid,
         }
 	meter_id = pipe->flow.meter_info;
 	if (meter_id) { /*all flows delete, destroy meter rule*/
+		#ifdef SUPPORT_METER
 		struct rte_mtr_error mtr_err;
 
 		//rte_mtr_meter_policy_delete(portid, meter_id, &mtr_err);
 		//rte_mtr_meter_profile_delete(portid, meter_id, &mtr_err);
+		#endif
 	}
 	rte_spinlock_unlock(&pipe->entry_lock);
 	free(pipe);
