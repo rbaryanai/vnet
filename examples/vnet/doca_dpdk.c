@@ -468,6 +468,22 @@ doca_dpdk_build_tcp_flow_item(struct doca_dpdk_item_entry *entry,
 		if (dst_port == UINT16_MAX)
 			entry->flags |= DOCA_MODIFY_DPORT;
 	}
+	switch (match->flags) {
+		case DOCA_TCP_FIN_FLAG:
+			spec->hdr.tcp_flags = RTE_TCP_FIN_FLAG;
+			mask->hdr.tcp_flags = RTE_TCP_FIN_FLAG;
+			break;
+		case DOCA_TCP_SYN_FLAG:
+			spec->hdr.tcp_flags = RTE_TCP_SYN_FLAG;
+			mask->hdr.tcp_flags = RTE_TCP_SYN_FLAG;
+			break;
+		case DOCA_TCP_RST_FLAG:
+			spec->hdr.tcp_flags = RTE_TCP_RST_FLAG;
+			mask->hdr.tcp_flags = RTE_TCP_RST_FLAG;
+			break;
+		default:
+			break;
+	}
 	if (src_port == 0 && dst_port == 0)
 		return;
 	item->spec = spec;

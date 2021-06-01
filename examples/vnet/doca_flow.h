@@ -107,6 +107,12 @@ struct doca_flow_port_cfg {
 	uint16_t priv_data_size; /* user private data */
 };
 
+enum doca_flow_match_flags {
+	DOCA_TCP_FIN_FLAG = (1 << 0),
+	DOCA_TCP_RST_FLAG = (1 << 1),
+	DOCA_TCP_SYN_FLAG = (1 << 2),
+};
+
 /**
  * @brief - matcher
  *   - used for defintion of a pipe
@@ -114,6 +120,8 @@ struct doca_flow_port_cfg {
  *     - only changeable fields are needed
  */
 struct doca_flow_match {
+
+	uint8_t flags;
 
 	uint8_t out_src_mac[DOCA_ETHER_ADDR_LEN];
 	uint8_t out_dst_mac[DOCA_ETHER_ADDR_LEN];
